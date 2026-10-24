@@ -14,7 +14,9 @@ import {
   Sparkles,
   CheckCircle,
   Upload,
-  Download
+  Download,
+  Copy,
+  Edit3
 } from 'lucide-react';
 import { Quiz } from '../types/quiz';
 import { soundEffects } from '../utils/soundEffects';
@@ -24,6 +26,8 @@ interface QuizManagementViewProps {
   onCreateQuiz: () => void;
   onDeployQuiz: (quiz: Quiz) => void;
   onPreviewQuiz: (quiz: Quiz) => void;
+  onEditQuiz: (quiz: Quiz) => void;
+  onDuplicateQuiz: (quiz: Quiz) => void;
   onDeleteQuiz: (quizId: string) => void;
 }
 
@@ -32,10 +36,20 @@ export const QuizManagementView: React.FC<QuizManagementViewProps> = ({
   onCreateQuiz,
   onDeployQuiz,
   onPreviewQuiz,
+  onEditQuiz,
+  onDuplicateQuiz,
   onDeleteQuiz
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+  const [customFolders, setCustomFolders] = useState<string[]>([
+    'CÔNG NGHỆ 12',
+    'CÔNG NGHỆ 10',
+    'SINH HỌC 11',
+    'TOÁN HỌC 12'
+  ]);
+  const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
 
   const filteredQuizzes = quizzes.filter(q => {
     const matchesSearch = q.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -44,13 +58,57 @@ export const QuizManagementView: React.FC<QuizManagementViewProps> = ({
     return matchesSearch && matchesFolder;
   });
 
+  const handleCreateFolder = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newFolderName.trim()) return;
+
+    soundEffects.playClick();
+    const formatted = newFolderName.trim().toUpperCase();
+    if (!customFolders.includes(formatted)) {
+      setCustomFolders((prev) => [...prev, formatted]);
+    }
+    setSelectedFolder(formatted);
+    setNewFolderName('');
+    setIsFolderModalOpen(false);
+    soundEffects.playCorrect();
+  };
+
+  const handleDownloadQuizFile = (quiz: Quiz) => {
+    soundEffects.playClick();
+    const content = `TRƯỜNG THPT MANG THÍT - ĐỀ THI TRẮC NGHIỆM
+Tác giả: Hồ Tấn Khải
+Tên đề: ${quiz.title}
+Môn học: ${quiz.subject} (${quiz.grade})
+Thời gian làm bài: ${quiz.durationMinutes} phút
+Tổng số câu: ${quiz.questionCount} câu
+
+${quiz.questions?.map((q, idx) => `
+Câu ${idx + 1}: ${q.content}
+${q.options.map(o => `  ${o.key}. ${o.text}`).join('\n')}
+=> Đáp án đúng: ${q.correctAnswer}
+=> Hướng dẫn giải: ${q.explanation || 'Theo SGK chuẩn.'}
+`).join('\n----------------------------------------\n') || 'Nội dung câu hỏi đang được biên tập.'}
+`;
+
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${quiz.fileName.replace('.docx', '')}_THPT_MangThit.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    soundEffects.playCorrect();
+  };
+
   return (
     <div className="space-y-6">
       {/* Page Title & Search Bar Matching Screenshot 2 */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">Quản lý đề kiểm tra</h1>
-          <p className="text-xs text-slate-500 mt-0.5">Kho lưu trữ đề thi, bài tập và ngân hàng câu hỏi</p>
+          <p className="text-xs text-slate-500 mt-0.5">Kho lưu trữ đề thi, bài tập và ngân hàng câu hỏi • Tác giả: Hồ Tấn Khải</p>
         </div>
 
         {/* Action Bar with 3D buttons */}
@@ -62,7 +120,7 @@ export const QuizManagementView: React.FC<QuizManagementViewProps> = ({
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Nhập tên đề..."
-              className="bg-white border border-slate-300 rounded-l-xl px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-teal-500 w-44 sm:w-56"
+              className="bg-white border border-slate-300 rounded-l-xl px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-teal-500 w-44 sm:w-56 font-medium"
             />
             <button
               onClick={() => soundEffects.playClick()}
@@ -76,9 +134,9 @@ export const QuizManagementView: React.FC<QuizManagementViewProps> = ({
           <button
             onClick={() => {
               soundEffects.playClick();
-              alert('Tính năng: Đã tạo thư mục mới để phân loại đề thi theo khối lớp!');
+              setIsFolderModalOpen(true);
             }}
-            className="btn-3d btn-3d-slate px-3.5 py-1.5 text-xs rounded-xl flex items-center gap-1.5 cursor-pointer"
+            className="btn-3d btn-3d-slate px-3.5 py-1.5 text-xs rounded-xl flex items-center gap-1.5 cursor-pointer font-bold"
           >
             <FolderPlus className="w-4 h-4 text-teal-600" />
             <span>Tạo mới thư mục</span>
@@ -90,7 +148,7 @@ export const QuizManagementView: React.FC<QuizManagementViewProps> = ({
               soundEffects.playClick();
               onCreateQuiz();
             }}
-            className="btn-3d btn-3d-teal px-4 py-1.5 text-xs rounded-xl flex items-center gap-1.5 cursor-pointer"
+            className="btn-3d btn-3d-teal px-4 py-1.5 text-xs rounded-xl flex items-center gap-1.5 cursor-pointer font-bold shadow-md"
           >
             <Plus className="w-4 h-4" />
             <span>Tạo mới đề</span>
@@ -137,6 +195,16 @@ export const QuizManagementView: React.FC<QuizManagementViewProps> = ({
                   <button
                     onClick={() => {
                       soundEffects.playClick();
+                      onEditQuiz(item);
+                    }}
+                    className="p-1 text-slate-400 hover:text-blue-600 rounded-md cursor-pointer"
+                    title="Chỉnh sửa câu hỏi"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      soundEffects.playClick();
                       onPreviewQuiz(item);
                     }}
                     className="p-1 text-slate-400 hover:text-teal-600 rounded-md cursor-pointer"
@@ -164,22 +232,26 @@ export const QuizManagementView: React.FC<QuizManagementViewProps> = ({
 
       {/* Section: Tất cả (Table matching Screenshot 2) */}
       <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-slate-200/80 flex items-center justify-between">
+        <div className="px-5 py-3.5 border-b border-slate-200/80 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <span className="font-extrabold text-sm text-slate-900">Tất cả đề thi</span>
+            <span className="font-extrabold text-sm text-slate-900">
+              {selectedFolder ? `Thư mục: ${selectedFolder}` : 'Tất cả đề thi'}
+            </span>
             <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold">
-              {filteredQuizzes.length} mục
+              {filteredQuizzes.length} đề
             </span>
           </div>
 
-          {selectedFolder && (
-            <button
-              onClick={() => setSelectedFolder(null)}
-              className="text-xs text-teal-600 hover:underline font-semibold"
-            >
-              ← Quay lại thư mục gốc
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {selectedFolder && (
+              <button
+                onClick={() => setSelectedFolder(null)}
+                className="text-xs text-teal-600 hover:underline font-semibold"
+              >
+                ← Xem toàn bộ
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -193,37 +265,41 @@ export const QuizManagementView: React.FC<QuizManagementViewProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700">
-              {/* Folder entry matching screenshot: "CÔNG NGHỆ 12" */}
-              {!selectedFolder && (
+              {/* Folder list when at root */}
+              {!selectedFolder && customFolders.map((folderName) => (
                 <tr
+                  key={folderName}
                   onClick={() => {
                     soundEffects.playClick();
-                    setSelectedFolder('CÔNG NGHỆ 12');
+                    setSelectedFolder(folderName);
                   }}
                   className="hover:bg-slate-50/70 transition-colors cursor-pointer font-bold"
                 >
                   <td className="py-3.5 px-5 flex items-center gap-2.5 text-slate-900">
                     <Folder className="w-4 h-4 text-amber-500 fill-amber-500" />
-                    <span>CÔNG NGHỆ 12</span>
+                    <span>{folderName}</span>
                   </td>
                   <td className="py-3.5 px-5 text-slate-400">—</td>
-                  <td className="py-3.5 px-5 text-slate-400">—</td>
-                  <td className="py-3.5 px-5 text-right">
-                    <button className="p-1 text-slate-400 hover:text-slate-600">
-                      <MoreVertical className="w-4 h-4 inline" />
-                    </button>
+                  <td className="py-3.5 px-5 text-slate-400 font-mono">
+                    {quizzes.filter(q => q.folder === folderName).length} đề
+                  </td>
+                  <td className="py-3.5 px-5 text-right text-slate-400 text-[11px]">
+                    Bấm để mở thư mục →
                   </td>
                 </tr>
-              )}
+              ))}
 
-              {/* Quizzes items matching screenshot 2 */}
+              {/* Quizzes items */}
               {filteredQuizzes.map((quiz) => (
                 <tr key={quiz.id} className="hover:bg-slate-50/70 transition-colors">
                   <td className="py-3.5 px-5">
                     <div className="flex items-center gap-2.5">
                       <FileText className="w-4 h-4 text-teal-600 shrink-0" />
                       <div>
-                        <span className="font-semibold text-slate-900 hover:text-teal-700 cursor-pointer" onClick={() => onPreviewQuiz(quiz)}>
+                        <span
+                          className="font-semibold text-slate-900 hover:text-teal-700 cursor-pointer"
+                          onClick={() => onPreviewQuiz(quiz)}
+                        >
                           {quiz.fileName}
                         </span>
                         {quiz.isInteractive && (
@@ -243,26 +319,60 @@ export const QuizManagementView: React.FC<QuizManagementViewProps> = ({
                           soundEffects.playClick();
                           onDeployQuiz(quiz);
                         }}
-                        className="btn-3d btn-3d-teal px-2.5 py-1 text-[11px] rounded-lg cursor-pointer flex items-center gap-1"
+                        className="btn-3d btn-3d-teal px-2.5 py-1 text-[11px] rounded-lg cursor-pointer flex items-center gap-1 font-bold"
                         title="Giao đề cho học sinh"
                       >
                         <Send className="w-3 h-3" />
                         <span>Giao đề</span>
                       </button>
+
+                      <button
+                        onClick={() => {
+                          soundEffects.playClick();
+                          onEditQuiz(quiz);
+                        }}
+                        className="p-1.5 text-slate-600 hover:text-blue-700 hover:bg-slate-100 rounded-lg cursor-pointer"
+                        title="Chỉnh sửa câu hỏi"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          soundEffects.playClick();
+                          onDuplicateQuiz(quiz);
+                        }}
+                        className="p-1.5 text-slate-600 hover:text-teal-700 hover:bg-slate-100 rounded-lg cursor-pointer"
+                        title="Nhân bản đề này"
+                      >
+                        <Copy className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        onClick={() => handleDownloadQuizFile(quiz)}
+                        className="p-1.5 text-slate-600 hover:text-indigo-700 hover:bg-slate-100 rounded-lg cursor-pointer"
+                        title="Tải tệp đề thi (.txt / Word)"
+                      >
+                        <Download className="w-4 h-4" />
+                      </button>
+
                       <button
                         onClick={() => {
                           soundEffects.playClick();
                           onPreviewQuiz(quiz);
                         }}
                         className="p-1.5 text-slate-500 hover:text-teal-700 hover:bg-slate-100 rounded-lg cursor-pointer"
-                        title="Xem câu hỏi"
+                        title="Làm thử / Xem câu hỏi"
                       >
                         <Eye className="w-4 h-4" />
                       </button>
+
                       <button
                         onClick={() => {
                           soundEffects.playClick();
-                          onDeleteQuiz(quiz.id);
+                          if (confirm(`Bạn có chắc chắn muốn xóa đề thi: "${quiz.title}"?`)) {
+                            onDeleteQuiz(quiz.id);
+                          }
                         }}
                         className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer"
                         title="Xóa đề"
@@ -277,6 +387,43 @@ export const QuizManagementView: React.FC<QuizManagementViewProps> = ({
           </table>
         </div>
       </div>
+
+      {/* New Folder Modal */}
+      {isFolderModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-100 space-y-4">
+            <h3 className="font-extrabold text-base text-slate-900">Tạo Thư Mục Đề Thi Mới</h3>
+            <form onSubmit={handleCreateFolder} className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-700 mb-1 font-bold">Tên thư mục:</label>
+                <input
+                  type="text"
+                  required
+                  value={newFolderName}
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                  placeholder="Ví dụ: CÔNG NGHỆ 11 HK2"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:border-teal-500 uppercase font-bold"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsFolderModalOpen(false)}
+                  className="btn-3d btn-3d-slate px-3.5 py-1.5 rounded-xl cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="btn-3d btn-3d-teal px-4 py-1.5 rounded-xl font-bold cursor-pointer"
+                >
+                  Tạo Thư Mục
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

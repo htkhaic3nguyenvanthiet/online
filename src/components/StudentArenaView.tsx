@@ -21,6 +21,8 @@ import { OptionKey, Question, Quiz, StudentSubmission } from '../types/quiz';
 import { sampleQuestions } from '../data/mockData';
 import { soundEffects } from '../utils/soundEffects';
 import { realtimeEngine } from '../services/realtimeEngine';
+import { aiService } from '../services/aiService';
+import { Bot } from 'lucide-react';
 
 interface StudentArenaViewProps {
   quizTitle?: string;
@@ -52,6 +54,8 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
   const [finalSubmission, setFinalSubmission] = useState<StudentSubmission | null>(null);
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [hasRestoredDraft, setHasRestoredDraft] = useState(false);
+  const [isAiExplaining, setIsAiExplaining] = useState(false);
+  const [aiExplanationText, setAiExplanationText] = useState<string | null>(null);
 
   // Network monitor for 4G/5G/Wifi stability
   useEffect(() => {
@@ -128,6 +132,28 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
   const handlePickOption = (key: OptionKey) => {
     soundEffects.playClick();
     setSelectedOption(key);
+  };
+
+  const handleAskAITutor = async () => {
+    soundEffects.playClick();
+    setIsAiExplaining(true);
+    setAiExplanationText('Đang kết nối với Trợ lý AI Gemini 3.8 Flash...');
+
+    try {
+      const explanation = await aiService.explainQuestion({
+        questionContent: currentQ.content,
+        options: currentQ.options,
+        selectedAnswer: selectedOption || undefined,
+        correctAnswer: currentQ.correctAnswer,
+        subject: 'Công nghệ Nông nghiệp 12',
+      });
+      setAiExplanationText(explanation);
+      soundEffects.playCorrect();
+    } catch (err: any) {
+      setAiExplanationText('Không thể kết nối AI: ' + err?.message);
+    } finally {
+      setIsAiExplaining(false);
+    }
   };
 
   const handleConfirmAnswer = () => {
@@ -488,19 +514,69 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
             {currentIndex + 1} / {questions.length}
           </div>
 
-          {/* Right: 3D Confirm / Next Button "Đồng ý >" */}
-          <button
-            onClick={handleConfirmAnswer}
-            disabled={!selectedOption || hasConfirmedCurrent}
-            className={`btn-3d px-6 py-2.5 rounded-xl font-black text-xs flex items-center gap-1.5 cursor-pointer shadow-lg transition-all ${
-              selectedOption
-                ? 'btn-3d-blue text-white'
-                : 'bg-white/20 text-white/50 cursor-not-allowed shadow-none'
-            }`}
-          >
-            <span>{isLastQuestion ? 'Nộp bài & Chấm điểm ✦' : 'Đồng ý >'}</span>
-          </button>
+          {/* Right: AI Tutor button + 3D Confirm / Next Button "Đồng ý >" */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleAskAITutor}
+              disabled={isAiExplaining}
+              className="btn-3d btn-3d-amber px-3.5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer text-amber-950 shadow-md"
+              title="Nhận hướng dẫn và giải thích từ Gia sư AI Gemini"
+            >
+              <Bot className="w-4 h-4 text-amber-900" />
+              <span>{isAiExplaining ? 'AI đang suy nghĩ...' : 'Hỏi Gia Sư AI'}</span>
+            </button>
+
+            <button
+              onClick={handleConfirmAnswer}
+              disabled={!selectedOption || hasConfirmedCurrent}
+              className={`btn-3d px-6 py-2.5 rounded-xl font-black text-xs flex items-center gap-1.5 cursor-pointer shadow-lg transition-all ${
+                selectedOption
+                  ? 'btn-3d-blue text-white'
+                  : 'bg-white/20 text-white/50 cursor-not-allowed shadow-none'
+              }`}
+            >
+              <span>{isLastQuestion ? 'Nộp bài & Chấm điểm ✦' : 'Đồng ý >'}</span>
+            </button>
+          </div>
         </div>
+
+        {/* AI Tutor Explanation Modal */}
+        {aiExplanationText && (
+          <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl max-w-lg w-full text-slate-800 shadow-2xl border border-slate-100 overflow-hidden p-6 space-y-4 animate-in fade-in zoom-in-95">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2 text-teal-800 font-extrabold text-sm">
+                  <Bot className="w-5 h-5 text-teal-600" />
+                  <span>Gia Sư Ảo AI Gemini 3.8 Flash • THPT Mang Thít</span>
+                </div>
+                <button
+                  onClick={() => setAiExplanationText(null)}
+                  className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1">
+                <span className="font-bold text-slate-600">Nội dung câu hỏi:</span>
+                <p className="font-semibold text-slate-900">{currentQ.content}</p>
+              </div>
+
+              <div className="text-xs text-slate-700 leading-relaxed max-h-60 overflow-y-auto whitespace-pre-line p-3 bg-teal-50/50 rounded-xl border border-teal-100">
+                {aiExplanationText}
+              </div>
+
+              <div className="flex justify-end pt-1">
+                <button
+                  onClick={() => setAiExplanationText(null)}
+                  className="btn-3d btn-3d-teal px-5 py-2 text-xs rounded-xl font-bold cursor-pointer"
+                >
+                  Đã hiểu bài! Tiếp tục làm bài
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }

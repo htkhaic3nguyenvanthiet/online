@@ -30,6 +30,15 @@ export interface Quiz {
   questions: Question[];
 }
 
+export interface Student {
+  id: string;
+  fullName: string;
+  studentCode: string;
+  avatarUrl?: string;
+  lastScore?: number;
+  completedExams: number;
+}
+
 export interface Classroom {
   id: string;
   name: string;
@@ -38,14 +47,7 @@ export interface Classroom {
   createdAt: string;
   code: string;
   teacherName: string;
-  students: {
-    id: string;
-    fullName: string;
-    studentCode: string;
-    avatarUrl?: string;
-    lastScore?: number;
-    completedExams: number;
-  }[];
+  students: Student[];
 }
 
 export interface ExamSession {

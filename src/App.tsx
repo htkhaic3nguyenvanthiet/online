@@ -3,6 +3,7 @@ import { ActiveTab, Classroom, ConcurrentSystemMetrics, ExamSession, Quiz, Stude
 import { mockQuizzes, mockClassrooms, mockSessions } from './data/mockData';
 import { realtimeEngine } from './services/realtimeEngine';
 import { soundEffects } from './utils/soundEffects';
+import { cloudStorageService } from './services/cloudStorageService';
 
 import { TopNavbar } from './components/TopNavbar';
 import { Sidebar } from './components/Sidebar';
@@ -17,8 +18,10 @@ import { OfflineExamView } from './components/OfflineExamView';
 import { Live500StressTestMonitor } from './components/Live500StressTestMonitor';
 import { StudentArenaView } from './components/StudentArenaView';
 import { CreateQuizModal } from './components/CreateQuizModal';
+import { EditQuizModal } from './components/EditQuizModal';
+import { CloudDriveModal } from './components/CloudDriveModal';
 import { LiveNotificationToast } from './components/LiveNotificationToast';
-import { Award, School, UserCheck, ShieldCheck } from 'lucide-react';
+import { Award, School, UserCheck, ShieldCheck, Cloud, Sparkles } from 'lucide-react';
 
 export default function App() {
   const [appMode, setAppMode] = useState<'teacher' | 'student'>('teacher');
@@ -33,8 +36,22 @@ export default function App() {
   const [is500SimActive, setIs500SimActive] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [isCreateQuizModalOpen, setIsCreateQuizModalOpen] = useState(false);
+  const [isEditQuizModalOpen, setIsEditQuizModalOpen] = useState(false);
+  const [quizToEdit, setQuizToEdit] = useState<Quiz | null>(null);
+  const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
   const [latestToastSub, setLatestToastSub] = useState<StudentSubmission | null>(null);
   const [activeStudentExamTitle, setActiveStudentExamTitle] = useState('ÔN CN12-1-2-3');
+
+  // Load persistent cloud state on mount
+  useEffect(() => {
+    cloudStorageService.fetchFromCloud().then((cloudData) => {
+      if (cloudData) {
+        if (cloudData.quizzes && cloudData.quizzes.length > 0) setQuizzes(cloudData.quizzes);
+        if (cloudData.classrooms && cloudData.classrooms.length > 0) setClassrooms(cloudData.classrooms);
+        if (cloudData.sessions && cloudData.sessions.length > 0) setSessions(cloudData.sessions);
+      }
+    });
+  }, []);
 
   // Real-time synchronization
   useEffect(() => {
@@ -92,16 +109,20 @@ export default function App() {
     setQuizzes((prev) => [newQuiz, ...prev]);
   };
 
+  const handleUpdateQuiz = (updated: Quiz) => {
+    setQuizzes((prev) => prev.map((q) => (q.id === updated.id ? updated : q)));
+  };
+
   const handleDeployQuiz = (quiz: Quiz) => {
     const newSession: ExamSession = {
-      id: 'sess-' + Date.now(),
+      id: 'sess-' + Math.floor(1000000 + Math.random() * 9000000),
       title: quiz.title,
       quizId: quiz.id,
-      className: 'Tất cả các lớp',
+      className: 'Tất cả các lớp (Khối 12)',
       startTime: 'Vừa tạo',
-      endTime: 'Sau 7 ngày',
+      endTime: 'Sau 30 ngày',
       status: 'active',
-      shareUrl: `https://youngtest.vn/quiz-advance/take/${quiz.id.slice(0, 6)}/start`,
+      shareUrl: `https://htkhaic3nguyenvanthiet.github.io/online/#/exam/${quiz.id.slice(0, 6)}/start`,
       allowedAttempts: 5,
       durationMinutes: quiz.durationMinutes,
       totalSubmissions: 0,
@@ -110,6 +131,13 @@ export default function App() {
     };
     setSessions((prev) => [newSession, ...prev]);
     setCurrentTab('online-sessions');
+  };
+
+  const handleClearJunkData = () => {
+    // Keep only authentic THPT Mang Thit mock collections and clean temporary caches
+    realtimeEngine.clearSubmissions();
+    setSubmissions([]);
+    localStorage.removeItem('testonline_active_draft');
   };
 
   return (
@@ -131,6 +159,7 @@ export default function App() {
           setAppMode('teacher');
           setCurrentTab('live-monitor');
         }}
+        onOpenCloudModal={() => setIsCloudModalOpen(true)}
       />
 
       {/* Main Workspace Body */}
@@ -140,7 +169,7 @@ export default function App() {
             quizTitle={activeStudentExamTitle}
             onExit={() => setAppMode('teacher')}
             onResultSubmitted={() => {
-              // when submitted, user can review or jump back
+              // result submitted callback
             }}
           />
         </main>
@@ -153,7 +182,7 @@ export default function App() {
             pendingSubmissionsCount={submissions.length}
           />
 
-          {/* Right Display Viewport ("bên phải là khung hiển thị") */}
+          {/* Right Display Viewport */}
           <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-slate-50">
             <div className="max-w-7xl mx-auto">
               {currentTab === 'dashboard' && (
@@ -172,6 +201,12 @@ export default function App() {
                 <ClassroomsView
                   classrooms={classrooms}
                   onCreateClassroom={handleCreateClassroom}
+                  onUpdateClassroom={(updated) => {
+                    setClassrooms((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+                  }}
+                  onDeleteClassroom={(clsId) => {
+                    setClassrooms((prev) => prev.filter((c) => c.id !== clsId));
+                  }}
                 />
               )}
 
@@ -184,6 +219,21 @@ export default function App() {
                     setActiveStudentExamTitle(q.title);
                     setAppMode('student');
                   }}
+                  onEditQuiz={(q) => {
+                    setQuizToEdit(q);
+                    setIsEditQuizModalOpen(true);
+                  }}
+                  onDuplicateQuiz={(q) => {
+                    const dup: Quiz = {
+                      ...q,
+                      id: 'quiz-' + Date.now(),
+                      title: q.title + ' (Bản sao)',
+                      fileName: 'Ban_sao_' + q.fileName,
+                      createdAt: new Date().toLocaleDateString('vi-VN')
+                    };
+                    setQuizzes((prev) => [dup, ...prev]);
+                    soundEffects.playCorrect();
+                  }}
                   onDeleteQuiz={(quizId) => {
                     setQuizzes((prev) => prev.filter((q) => q.id !== quizId));
                   }}
@@ -193,12 +243,24 @@ export default function App() {
               {currentTab === 'online-sessions' && (
                 <OnlineSessionsView
                   sessions={sessions}
+                  quizzes={quizzes}
                   onCreateSession={() => setIsCreateQuizModalOpen(true)}
                   onOpenLiveMonitor={() => setCurrentTab('live-monitor')}
                   onOpenStudentExam={(sessId) => {
                     const sess = sessions.find((s) => s.id === sessId);
                     if (sess) setActiveStudentExamTitle(sess.title);
                     setAppMode('student');
+                  }}
+                  onToggleSessionStatus={(sessId) => {
+                    setSessions((prev) =>
+                      prev.map((s) => (s.id === sessId ? { ...s, status: s.status === 'active' ? 'completed' : 'active' } : s))
+                    );
+                  }}
+                  onDeleteSession={(sessId) => {
+                    setSessions((prev) => prev.filter((s) => s.id !== sessId));
+                  }}
+                  onAddNewSession={(newSess) => {
+                    setSessions((prev) => [newSess, ...prev]);
                   }}
                 />
               )}
@@ -292,6 +354,13 @@ export default function App() {
                       </span>
                       <span className="font-bold text-emerald-700 font-mono">Test Online 500 Slots Real-time</span>
                     </div>
+
+                    <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                      <span className="font-semibold text-slate-600 flex items-center gap-2">
+                        <Cloud className="w-4 h-4 text-blue-600" /> Đám mây & Sao lưu:
+                      </span>
+                      <span className="font-bold text-blue-700 font-mono">Google Drive & Cloud Server Connected</span>
+                    </div>
                   </div>
                 </div>
               )}
@@ -311,11 +380,38 @@ export default function App() {
         }}
       />
 
-      {/* Create Quiz Modal */}
+      {/* Create Quiz Modal with AI Gemini */}
       <CreateQuizModal
         isOpen={isCreateQuizModalOpen}
         onClose={() => setIsCreateQuizModalOpen(false)}
         onSaveQuiz={handleSaveQuiz}
+      />
+
+      {/* Edit Quiz Modal */}
+      <EditQuizModal
+        quiz={quizToEdit}
+        isOpen={isEditQuizModalOpen}
+        onClose={() => {
+          setIsEditQuizModalOpen(false);
+          setQuizToEdit(null);
+        }}
+        onSave={handleUpdateQuiz}
+      />
+
+      {/* Cloud & Google Drive Storage Modal */}
+      <CloudDriveModal
+        isOpen={isCloudModalOpen}
+        onClose={() => setIsCloudModalOpen(false)}
+        quizzes={quizzes}
+        classrooms={classrooms}
+        sessions={sessions}
+        submissions={submissions}
+        onDataRestored={(data) => {
+          if (data.quizzes) setQuizzes(data.quizzes);
+          if (data.classrooms) setClassrooms(data.classrooms);
+          if (data.sessions) setSessions(data.sessions);
+        }}
+        onClearJunkData={handleClearJunkData}
       />
     </div>
   );

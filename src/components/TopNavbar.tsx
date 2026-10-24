@@ -9,7 +9,8 @@ import {
   GraduationCap, 
   Activity, 
   CheckCircle2,
-  ChevronDown
+  ChevronDown,
+  Cloud
 } from 'lucide-react';
 import { soundEffects } from '../utils/soundEffects';
 
@@ -21,6 +22,7 @@ interface TopNavbarProps {
   soundEnabled: boolean;
   onToggleSound: () => void;
   onNavigateToLiveMonitor: () => void;
+  onOpenCloudModal: () => void;
 }
 
 export const TopNavbar: React.FC<TopNavbarProps> = ({
@@ -30,7 +32,8 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
   onToggle500Sim,
   soundEnabled,
   onToggleSound,
-  onNavigateToLiveMonitor
+  onNavigateToLiveMonitor,
+  onOpenCloudModal
 }) => {
   return (
     <header className="bg-white border-b border-slate-200/90 sticky top-0 z-40 shadow-xs">
@@ -142,6 +145,20 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
           >
             <Activity className={`w-3.5 h-3.5 ${is500SimActive ? 'animate-spin' : ''}`} />
             <span>{is500SimActive ? '⚡ Đang Chạy Tải 500 HS' : '🚀 Test Tải 500 Học Sinh'}</span>
+          </button>
+
+          {/* Cloud & Drive Center 3D Button */}
+          <button
+            onClick={() => {
+              soundEffects.playClick();
+              onOpenCloudModal();
+            }}
+            className="btn-3d btn-3d-blue px-3 py-1.5 text-xs rounded-lg flex items-center gap-1.5 cursor-pointer font-bold"
+            title="Đồng bộ hóa đám mây và sao lưu Google Drive"
+          >
+            <Cloud className="w-3.5 h-3.5 text-blue-200" />
+            <span>Đám Mây & Drive</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
           </button>
 
           {/* Sound Synthesizer toggle */}
