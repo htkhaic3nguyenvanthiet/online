@@ -1,0 +1,6 @@
+{
+  "name": "YoungTest - Hệ Thống Giao Đề & Thi Trắc Nghiệm Tương Tác Trực Tuyến",
+  "description": "Nền tảng thi trắc nghiệm, quản lý đề thi, đấu trường game học tập tương tác chịu tải 500+ học sinh đồng thời và tự động chấm điểm trả kết quả thời gian thực.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
