@@ -3,9 +3,9 @@ import react from '@vitejs/plugin-react';
 import {fileURLToPath, URL} from 'node:url';
 import {defineConfig} from 'vite';
 
-export default defineConfig(() => {
+export default defineConfig(({mode}) => {
   return {
-    base: './',
+    base: process.env.BASE_PATH || (mode === 'production' ? '/online/' : '/'),
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
