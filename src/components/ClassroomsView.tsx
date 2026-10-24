@@ -72,7 +72,7 @@ export const ClassroomsView: React.FC<ClassroomsViewProps> = ({
         {classrooms.map((cls) => (
           <div
             key={cls.id}
-            className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs hover:border-teal-400 hover:shadow-md transition-all flex flex-col justify-between group"
+            className="card-3d card-3d-teal p-5 flex flex-col justify-between group"
           >
             <div>
               <div className="flex items-start justify-between">

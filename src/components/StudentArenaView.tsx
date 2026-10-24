@@ -50,6 +50,62 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
   const [fontSizeOffset, setFontSizeOffset] = useState(0);
   const [secondsRemaining, setSecondsRemaining] = useState(3627); // ~01:00:27 matching screenshot!
   const [finalSubmission, setFinalSubmission] = useState<StudentSubmission | null>(null);
+  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [hasRestoredDraft, setHasRestoredDraft] = useState(false);
+
+  // Network monitor for 4G/5G/Wifi stability
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    // Check for existing saved draft in case of accidental reload or network drop
+    try {
+      const saved = localStorage.getItem('testonline_active_draft');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && Date.now() - parsed.timestamp < 3600000 * 2) { // within 2 hours
+          setUserAnswers(parsed.userAnswers || {});
+          setCurrentIndex(parsed.currentIndex || 0);
+          setStreak(parsed.streak || 0);
+          setStudentName(parsed.studentName || 'Nguyễn Thành Nam');
+          setStudentInfo(parsed.studentInfo || '12A5 - SBD: 052');
+          setHasRestoredDraft(true);
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // Continuous autosave of answers to protect against 4G disconnection
+  useEffect(() => {
+    if (step === 'testing') {
+      try {
+        localStorage.setItem(
+          'testonline_active_draft',
+          JSON.stringify({
+            quizTitle,
+            studentName,
+            studentInfo,
+            currentIndex,
+            userAnswers,
+            streak,
+            secondsRemaining,
+            timestamp: Date.now()
+          })
+        );
+      } catch {
+        // ignore
+      }
+    }
+  }, [step, currentIndex, userAnswers, streak, secondsRemaining, quizTitle, studentName, studentInfo]);
 
   // Timer countdown during testing
   useEffect(() => {
@@ -138,6 +194,12 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
       streakMax: Math.max(streak, correctCount),
       answers
     });
+
+    try {
+      localStorage.removeItem('testonline_active_draft');
+    } catch {
+      // ignore
+    }
 
     setFinalSubmission(sub);
     setStep('result');
@@ -320,10 +382,16 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
             <Power className="w-5 h-5 stroke-[2.5]" />
           </button>
 
-          {/* Student identifier chip */}
-          <div className="text-center">
+          {/* Student identifier chip & network resilience status */}
+          <div className="text-center flex flex-col items-center">
             <span className="font-extrabold text-sm sm:text-base text-white tracking-wide">
               {studentName} - {studentInfo}
+            </span>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 mt-0.5 ${
+              isOnline ? 'bg-emerald-500/30 text-emerald-200 border border-emerald-400/40' : 'bg-amber-500/30 text-amber-200 border border-amber-400/40'
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
+              <span>{isOnline ? '4G/5G: Ổn định (Chống rớt mạng)' : 'Mạng yếu: Đã lưu tự động trong máy'}</span>
             </span>
           </div>
 

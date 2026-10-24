@@ -112,7 +112,7 @@ export const QuizManagementView: React.FC<QuizManagementViewProps> = ({
           {quizzes.slice(0, 4).map((item) => (
             <div
               key={item.id}
-              className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs hover:border-teal-400 hover:shadow-md transition-all flex flex-col justify-between group"
+              className="card-3d card-3d-blue p-4 flex flex-col justify-between group"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="w-10 h-10 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center shrink-0">

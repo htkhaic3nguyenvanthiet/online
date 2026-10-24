@@ -133,6 +133,123 @@
     box-shadow: 0 0 0 #d97706;
     transform: translateY(4px);
   }
+
+  /* 3D Colorful Management Cards */
+  .card-3d {
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    border-radius: 1.25rem;
+  }
+  .card-3d:hover {
+    transform: translateY(-4px);
+  }
+  .card-3d:active {
+    transform: translateY(2px);
+  }
+
+  /* 1. Teal 3D Box (Quản lý lớp) */
+  .card-3d-teal {
+    background: linear-gradient(145deg, #ffffff 0%, #f0fdfa 100%);
+    border: 2px solid #5eead4;
+    box-shadow: 0 6px 0 #0d9488, 0 12px 24px rgba(13, 148, 136, 0.15);
+  }
+  .card-3d-teal:hover {
+    box-shadow: 0 9px 0 #0d9488, 0 16px 28px rgba(13, 148, 136, 0.22);
+  }
+  .card-3d-teal:active {
+    box-shadow: 0 2px 0 #0d9488;
+  }
+
+  /* 2. Cyan / Blue 3D Box (Kho đề kiểm tra) */
+  .card-3d-blue {
+    background: linear-gradient(145deg, #ffffff 0%, #f0f9ff 100%);
+    border: 2px solid #7dd3fc;
+    box-shadow: 0 6px 0 #0284c7, 0 12px 24px rgba(2, 132, 199, 0.15);
+  }
+  .card-3d-blue:hover {
+    box-shadow: 0 9px 0 #0284c7, 0 16px 28px rgba(2, 132, 199, 0.22);
+  }
+  .card-3d-blue:active {
+    box-shadow: 0 2px 0 #0284c7;
+  }
+
+  /* 3. Rose / Pink 3D Box (Game học tập) */
+  .card-3d-rose {
+    background: linear-gradient(145deg, #ffffff 0%, #fff1f2 100%);
+    border: 2px solid #fda4af;
+    box-shadow: 0 6px 0 #e11d48, 0 12px 24px rgba(225, 29, 72, 0.18);
+  }
+  .card-3d-rose:hover {
+    box-shadow: 0 9px 0 #e11d48, 0 16px 28px rgba(225, 29, 72, 0.25);
+  }
+  .card-3d-rose:active {
+    box-shadow: 0 2px 0 #e11d48;
+  }
+
+  /* 4. Indigo / Violet 3D Box (Giao đề Online) */
+  .card-3d-indigo {
+    background: linear-gradient(145deg, #ffffff 0%, #eef2ff 100%);
+    border: 2px solid #a5b4fc;
+    box-shadow: 0 6px 0 #4f46e5, 0 12px 24px rgba(79, 70, 229, 0.15);
+  }
+  .card-3d-indigo:hover {
+    box-shadow: 0 9px 0 #4f46e5, 0 16px 28px rgba(79, 70, 229, 0.22);
+  }
+  .card-3d-indigo:active {
+    box-shadow: 0 2px 0 #4f46e5;
+  }
+
+  /* 5. Amber / Gold 3D Box (Giao đề Giấy) */
+  .card-3d-amber {
+    background: linear-gradient(145deg, #ffffff 0%, #fefce8 100%);
+    border: 2px solid #fde047;
+    box-shadow: 0 6px 0 #d97706, 0 12px 24px rgba(217, 119, 6, 0.15);
+  }
+  .card-3d-amber:hover {
+    box-shadow: 0 9px 0 #d97706, 0 16px 28px rgba(217, 119, 6, 0.22);
+  }
+  .card-3d-amber:active {
+    box-shadow: 0 2px 0 #d97706;
+  }
+
+  /* 6. Purple 3D Box (Giao đề Thiếu nhi) */
+  .card-3d-purple {
+    background: linear-gradient(145deg, #ffffff 0%, #faf5ff 100%);
+    border: 2px solid #d8b4fe;
+    box-shadow: 0 6px 0 #9333ea, 0 12px 24px rgba(147, 51, 234, 0.15);
+  }
+  .card-3d-purple:hover {
+    box-shadow: 0 9px 0 #9333ea, 0 16px 28px rgba(147, 51, 234, 0.22);
+  }
+  .card-3d-purple:active {
+    box-shadow: 0 2px 0 #9333ea;
+  }
+
+  /* 7. Orange 3D Box (Kiểm tra Offline) */
+  .card-3d-orange {
+    background: linear-gradient(145deg, #ffffff 0%, #fff7ed 100%);
+    border: 2px solid #fdba74;
+    box-shadow: 0 6px 0 #ea580c, 0 12px 24px rgba(234, 88, 12, 0.15);
+  }
+  .card-3d-orange:hover {
+    box-shadow: 0 9px 0 #ea580c, 0 16px 28px rgba(234, 88, 12, 0.22);
+  }
+  .card-3d-orange:active {
+    box-shadow: 0 2px 0 #ea580c;
+  }
+
+  /* 8. Emerald 3D Box (Stats summary) */
+  .card-3d-emerald {
+    background: linear-gradient(145deg, #ffffff 0%, #ecfdf5 100%);
+    border: 2px solid #6ee7b7;
+    box-shadow: 0 6px 0 #059669, 0 12px 24px rgba(5, 150, 105, 0.15);
+  }
+  .card-3d-emerald:hover {
+    box-shadow: 0 9px 0 #059669, 0 16px 28px rgba(5, 150, 105, 0.22);
+  }
+  .card-3d-emerald:active {
+    box-shadow: 0 2px 0 #059669;
+  }
 }
 
 /* Custom scrollbar */
