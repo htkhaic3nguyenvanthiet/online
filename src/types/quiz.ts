@@ -50,6 +50,16 @@ export interface Classroom {
   students: Student[];
 }
 
+export interface AntiCheatConfig {
+  maxTabSwitches: number; // e.g. 3
+  autoSubmitOnExceed: boolean;
+  requireFullscreen: boolean;
+  preventCopyPaste: boolean;
+  shuffleQuestions: boolean;
+  shuffleOptions: boolean;
+  blockAIInExam: boolean; // strictly block AI tutor during live exam
+}
+
 export interface ExamSession {
   id: string;
   title: string;
@@ -61,11 +71,18 @@ export interface ExamSession {
   status: 'active' | 'upcoming' | 'completed';
   shareUrl: string;
   qrCodeUrl?: string;
-  allowedAttempts: number;
+  allowedAttempts: number; // 1, 2, 3, or 0 = unlimited
   durationMinutes: number;
   totalSubmissions: number;
   maxSlots: number; // 500+ slots
   isArenaMode?: boolean;
+  antiCheatConfig?: AntiCheatConfig;
+}
+
+export interface CheatLog {
+  timestamp: string;
+  event: string;
+  type: 'tab_switch' | 'fullscreen_exit' | 'copy_attempt' | 'window_blur';
 }
 
 export interface StudentSubmission {
@@ -76,12 +93,19 @@ export interface StudentSubmission {
   score: number;
   totalPoints: number;
   correctAnswersCount: number;
+  wrongAnswersCount?: number;
+  unansweredCount?: number;
   totalQuestions: number;
   submittedAt: string;
   durationSeconds: number;
   streakMax: number;
   answers: Record<string, OptionKey>;
   autoGraded: boolean;
+  tabSwitchCount?: number;
+  cheatLogs?: CheatLog[];
+  attemptNumber?: number;
+  isDisqualified?: boolean;
+  disqualificationReason?: string;
 }
 
 export interface ConcurrentSystemMetrics {

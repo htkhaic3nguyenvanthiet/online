@@ -279,6 +279,7 @@ export const Live500StressTestMonitor: React.FC<Live500StressTestMonitorProps> =
                 <th className="py-2.5 px-4">Lớp / SBD</th>
                 <th className="py-2.5 px-4 text-center">Số câu đúng</th>
                 <th className="py-2.5 px-4 text-center">Thời gian</th>
+                <th className="py-2.5 px-4 text-center">Giám sát vi phạm</th>
                 <th className="py-2.5 px-4 text-center">Điểm số</th>
                 <th className="py-2.5 px-4 text-right">Trạng thái tự chấm</th>
               </tr>
@@ -286,6 +287,7 @@ export const Live500StressTestMonitor: React.FC<Live500StressTestMonitorProps> =
             <tbody className="divide-y divide-slate-100 text-slate-700">
               {submissions.map((sub, index) => {
                 const isNew = index === 0;
+                const tabViolations = sub.tabSwitchCount ?? 0;
                 return (
                   <tr
                     key={sub.id}
@@ -310,6 +312,21 @@ export const Live500StressTestMonitor: React.FC<Live500StressTestMonitorProps> =
                     </td>
                     <td className="py-3 px-4 text-center font-mono text-slate-500">
                       {Math.floor(sub.durationSeconds / 60)}m {sub.durationSeconds % 60}s
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      {sub.isDisqualified ? (
+                        <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
+                          ⛔ Đình chỉ thi
+                        </span>
+                      ) : tabViolations > 0 ? (
+                        <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                          ⚠️ {tabViolations} lần chuyển tab
+                        </span>
+                      ) : (
+                        <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          ✓ Minh bạch
+                        </span>
+                      )}
                     </td>
                     <td className="py-3 px-4 text-center font-mono">
                       <span

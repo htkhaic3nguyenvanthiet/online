@@ -169,5 +169,29 @@ export const soundEffects = {
     } catch {
       // ignore
     }
+  },
+
+  // Warning buzzer when student leaves exam tab or attempts cheating
+  playWarning() {
+    if (!soundEnabled) return;
+    try {
+      const ctx = getAudioContext();
+      if (!ctx) return;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(240, ctx.currentTime);
+      osc.frequency.setValueAtTime(160, ctx.currentTime + 0.1);
+
+      gain.gain.setValueAtTime(0.25, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.32);
+    } catch {
+      // ignore
+    }
   }
 };

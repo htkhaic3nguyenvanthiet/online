@@ -41,6 +41,7 @@ export default function App() {
   const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
   const [latestToastSub, setLatestToastSub] = useState<StudentSubmission | null>(null);
   const [activeStudentExamTitle, setActiveStudentExamTitle] = useState('ÔN CN12-1-2-3');
+  const [activeStudentExamSession, setActiveStudentExamSession] = useState<ExamSession | null>(null);
 
   // Load persistent cloud state on mount
   useEffect(() => {
@@ -167,6 +168,7 @@ export default function App() {
         <main className="flex-1 max-w-5xl mx-auto w-full p-4 sm:p-6">
           <StudentArenaView
             quizTitle={activeStudentExamTitle}
+            session={activeStudentExamSession || sessions[0]}
             onExit={() => setAppMode('teacher')}
             onResultSubmitted={() => {
               // result submitted callback
@@ -248,7 +250,10 @@ export default function App() {
                   onOpenLiveMonitor={() => setCurrentTab('live-monitor')}
                   onOpenStudentExam={(sessId) => {
                     const sess = sessions.find((s) => s.id === sessId);
-                    if (sess) setActiveStudentExamTitle(sess.title);
+                    if (sess) {
+                      setActiveStudentExamSession(sess);
+                      setActiveStudentExamTitle(sess.title);
+                    }
                     setAppMode('student');
                   }}
                   onToggleSessionStatus={(sessId) => {
@@ -261,6 +266,9 @@ export default function App() {
                   }}
                   onAddNewSession={(newSess) => {
                     setSessions((prev) => [newSess, ...prev]);
+                  }}
+                  onUpdateSession={(updatedSess) => {
+                    setSessions((prev) => prev.map((s) => (s.id === updatedSess.id ? updatedSess : s)));
                   }}
                 />
               )}
