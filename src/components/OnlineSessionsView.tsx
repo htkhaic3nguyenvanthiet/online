@@ -62,9 +62,10 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
 
   // New Session Modal State
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
-  const [newTitle, setNewTitle] = useState('');
+  const [selectedQuizId, setSelectedQuizId] = useState<string>(() => quizzes[0]?.id || '');
+  const [newTitle, setNewTitle] = useState(() => quizzes[0]?.title || '');
   const [newClass, setNewClass] = useState('Tất cả lớp học (Khối 12)');
-  const [newDuration, setNewDuration] = useState(45);
+  const [newDuration, setNewDuration] = useState(() => quizzes[0]?.durationMinutes || 50);
   const [newAttempts, setNewAttempts] = useState(1);
   const [newStartTime, setNewStartTime] = useState(
     new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date().toLocaleDateString('vi-VN')
@@ -90,14 +91,18 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
 
   const handleCreateNewSessionSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTitle.trim()) return;
-
     soundEffects.playClick();
+
+    const chosenQuiz = quizzes.find((q) => q.id === selectedQuizId) || quizzes[0];
+    const totalQCount = (chosenQuiz?.questions && chosenQuiz.questions.length > 0)
+      ? chosenQuiz.questions.length
+      : (chosenQuiz?.questionCount || 28);
+
     const newId = 'sess-' + Math.floor(1000000 + Math.random() * 9000000);
     const created: ExamSession = {
       id: newId,
-      title: newTitle.trim(),
-      quizId: 'custom-quiz',
+      title: newTitle.trim() || chosenQuiz?.title || 'Bài thi trực tuyến',
+      quizId: chosenQuiz?.id || 'custom-quiz',
       className: newClass,
       startTime: newStartTime,
       endTime: newEndTime,
@@ -108,6 +113,7 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
       totalSubmissions: 0,
       maxSlots: 500,
       isArenaMode: true,
+      questionCount: totalQCount,
       antiCheatConfig: {
         maxTabSwitches: newMaxTabSwitches,
         autoSubmitOnExceed: true,
@@ -216,6 +222,7 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
                 <th className="py-3 px-4 min-w-[200px]">Tên bài kiểm tra</th>
                 <th className="py-3 px-4 text-center">Giao đề & Cài đặt</th>
                 <th className="py-3 px-4 text-center">Thời lượng</th>
+                <th className="py-3 px-4 text-center">Số câu hỏi</th>
                 <th className="py-3 px-4 text-center">Số lượt làm</th>
                 <th className="py-3 px-4 min-w-[140px]">Thời hạn nộp</th>
                 <th className="py-3 px-4 text-center">Giám sát chống gian lận</th>
@@ -226,6 +233,10 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
             <tbody className="divide-y divide-slate-100 text-slate-700">
               {filteredSessions.map((sess) => {
                 const maxTabs = sess.antiCheatConfig?.maxTabSwitches ?? 3;
+                const linkedQuiz = quizzes.find((q) => q.id === sess.quizId || q.title === sess.title);
+                const realQCount = sess.questionCount || (linkedQuiz?.questions && linkedQuiz.questions.length > 0 ? linkedQuiz.questions.length : linkedQuiz?.questionCount) || 28;
+                const qBreakdown = linkedQuiz?.breakdown || `${realQCount}-0-0-0`;
+
                 return (
                   <tr key={sess.id} className="hover:bg-slate-50/70 transition-colors">
                     {/* Tên */}
@@ -257,6 +268,16 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
                       <span className="bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
                         {sess.durationMinutes}&apos;
                       </span>
+                    </td>
+
+                    {/* Số câu hỏi */}
+                    <td className="py-3.5 px-4 text-center">
+                      <span className="inline-block bg-teal-50 text-teal-800 border border-teal-200 font-black text-xs px-2.5 py-1 rounded-lg">
+                        {realQCount} câu
+                      </span>
+                      <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                        {qBreakdown}
+                      </div>
                     </td>
 
                     {/* Số lượt làm */}
@@ -569,6 +590,35 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
             </div>
 
             <form onSubmit={handleCreateNewSessionSubmit} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1 flex items-center justify-between">
+                  <span>Chọn đề thi từ kho ({quizzes.length} đề):</span>
+                  <span className="text-[10px] text-teal-700 font-semibold">Tự động nạp câu hỏi</span>
+                </label>
+                <select
+                  value={selectedQuizId}
+                  onChange={(e) => {
+                    const qId = e.target.value;
+                    setSelectedQuizId(qId);
+                    const q = quizzes.find((item) => item.id === qId);
+                    if (q) {
+                      setNewTitle(q.title);
+                      setNewDuration(q.durationMinutes || 50);
+                    }
+                  }}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:border-teal-500 font-bold bg-white text-slate-800"
+                >
+                  {quizzes.map((q) => {
+                    const count = (q.questions && q.questions.length > 0) ? q.questions.length : q.questionCount;
+                    return (
+                      <option key={q.id} value={q.id}>
+                        {q.title} ({count} câu • {q.breakdown || `${count}-0-0-0`})
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
               <div>
                 <label className="block font-bold text-slate-700 mb-1">Tên bài kiểm tra / Đề thi:</label>
                 <input

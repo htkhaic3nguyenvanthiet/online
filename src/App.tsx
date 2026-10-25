@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { ActiveTab, Classroom, ConcurrentSystemMetrics, ExamSession, Quiz, StudentSubmission } from './types/quiz';
-import { mockQuizzes, mockClassrooms, mockSessions } from './data/mockData';
+import { ActiveTab, Classroom, ConcurrentSystemMetrics, ExamSession, Quiz, StudentSubmission, Question } from './types/quiz';
+import { mockQuizzes, mockClassrooms, mockSessions, sampleQuestions } from './data/mockData';
 import { realtimeEngine } from './services/realtimeEngine';
 import { soundEffects } from './utils/soundEffects';
 import { cloudStorageService } from './services/cloudStorageService';
@@ -252,24 +252,44 @@ export default function App() {
     localStorage.removeItem('testonline_active_draft');
   };
 
+  // Helper to ensure 100% of authored questions are retrieved without dropping any questions
+  const getExamQuestions = (targetSession?: ExamSession | null, targetTitle?: string): Question[] => {
+    // 1. By session quizId
+    if (targetSession?.quizId) {
+      const q = quizzes.find((quiz) => quiz.id === targetSession.quizId);
+      if (q?.questions && q.questions.length > 0) return q.questions;
+    }
+    // 2. By title
+    const searchTitle = targetTitle || targetSession?.title;
+    if (searchTitle) {
+      const q = quizzes.find((quiz) =>
+        quiz.title.toLowerCase().trim() === searchTitle.toLowerCase().trim() ||
+        searchTitle.toLowerCase().includes(quiz.title.toLowerCase()) ||
+        quiz.title.toLowerCase().includes(searchTitle.toLowerCase())
+      );
+      if (q?.questions && q.questions.length > 0) return q.questions;
+    }
+    // 3. By URL exam param
+    const urlId = getExamIdFromUrl();
+    if (urlId) {
+      const q = quizzes.find((quiz) => quiz.id === urlId || quiz.id.startsWith(urlId.slice(0, 6)));
+      if (q?.questions && q.questions.length > 0) return q.questions;
+    }
+    // 4. Fallback to first quiz with questions or sampleQuestions
+    const firstWithQ = quizzes.find((quiz) => quiz.questions && quiz.questions.length > 0);
+    return firstWithQ?.questions || sampleQuestions;
+  };
+
   // ISOLATED DIRECT STUDENT MODE (When student accesses via shared link)
   // Absolutely no TopNavbar, no Sidebar, no teacher administration controls
   if (isDirectStudentMode) {
-    const currentExamId = getExamIdFromUrl();
-    const activeQuiz =
-      quizzes.find((q) => q.id === activeStudentExamSession?.quizId || q.title === activeStudentExamTitle) ||
-      (currentExamId ? quizzes.find((q) => q.id === currentExamId || currentExamId.startsWith(q.id.slice(0, 6))) : null) ||
-      quizzes[0];
-
-    const questionsToServe = (activeQuiz?.questions && activeQuiz.questions.length > 0)
-      ? activeQuiz.questions
-      : undefined;
+    const questionsToServe = getExamQuestions(activeStudentExamSession, activeStudentExamTitle);
 
     return (
       <div className="min-h-screen bg-[#140b22] flex flex-col font-sans text-slate-800">
         <main className="flex-1 max-w-5xl mx-auto w-full p-2 sm:p-4 md:p-6 flex flex-col justify-center">
           <StudentArenaView
-            quizTitle={activeStudentExamTitle || activeQuiz?.title || 'Bài kiểm tra trực tuyến'}
+            quizTitle={activeStudentExamTitle || activeStudentExamSession?.title || 'Bài kiểm tra trực tuyến'}
             session={activeStudentExamSession || sessions[0]}
             customQuestions={questionsToServe}
             isDirectStudentMode={true}
@@ -293,7 +313,7 @@ export default function App() {
         onSwitchMode={(mode) => {
           setAppMode(mode);
           if (mode === 'student') {
-            setActiveStudentExamTitle('ÔN CN12-1-2-3');
+            setActiveStudentExamTitle('ÔN CN12-1-2-3 (Đề chuẩn TT 7991)');
           }
         }}
         is500SimActive={is500SimActive}
@@ -315,11 +335,7 @@ export default function App() {
           <StudentArenaView
             quizTitle={activeStudentExamTitle}
             session={activeStudentExamSession || sessions[0]}
-            customQuestions={
-              quizzes.find(
-                (q) => q.title === activeStudentExamTitle || q.id === activeStudentExamSession?.quizId
-              )?.questions
-            }
+            customQuestions={getExamQuestions(activeStudentExamSession, activeStudentExamTitle)}
             onExit={() => setAppMode('teacher')}
             onResultSubmitted={() => {
               // result submitted callback

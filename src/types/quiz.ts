@@ -90,6 +90,7 @@ export interface ExamSession {
   totalSubmissions: number;
   maxSlots: number; // 500+ slots
   isArenaMode?: boolean;
+  questionCount?: number;
   antiCheatConfig?: AntiCheatConfig;
 }
 

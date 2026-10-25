@@ -351,7 +351,16 @@ ${q.options ? q.options.map(o => `  ${o.key}. ${o.text}`).join('\n') : q.subItem
                     </div>
                   </td>
                   <td className="py-3.5 px-5 text-slate-600 font-mono">{quiz.createdAt}</td>
-                  <td className="py-3.5 px-5 font-mono font-semibold text-teal-800">{quiz.breakdown}</td>
+                  <td className="py-3.5 px-5">
+                    <div className="font-extrabold text-slate-900 text-xs flex items-center gap-1.5">
+                      <span className="text-emerald-700 font-black">
+                        {(quiz.questions && quiz.questions.length > 0) ? quiz.questions.length : quiz.questionCount} câu
+                      </span>
+                      <span className="text-[10px] bg-teal-50 text-teal-700 font-mono px-1.5 py-0.5 rounded-md border border-teal-200">
+                        {quiz.breakdown || `${quiz.questionCount}-0-0-0`}
+                      </span>
+                    </div>
+                  </td>
                   <td className="py-3.5 px-5 text-right">
                     <div className="flex items-center justify-end gap-1.5">
                       <button

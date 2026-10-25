@@ -231,10 +231,18 @@ export const CreateQuizModal: React.FC<CreateQuizModalProps> = ({
       return;
     }
 
+    if (questions.length === 0) {
+      alert('Đề thi chưa có câu hỏi nào! Vui lòng tải file Word, dán câu hỏi hoặc sử dụng AI để tạo câu hỏi.');
+      return;
+    }
+
     soundEffects.playCorrect();
 
+    const p1 = questions.filter((q) => q.partType === 'part1_choice' || (!q.partType && q.options && q.options.length > 0)).length;
+    const p2 = questions.filter((q) => q.partType === 'part2_true_false').length;
+    const p3 = questions.filter((q) => q.partType === 'part3_short_answer').length;
     const totalQ = questions.length;
-    const bd = `${partBreakdown.part1}-${partBreakdown.part2}-${partBreakdown.part3}-0`;
+    const bd = `${p1}-${p2}-${p3}-0`;
 
     const created: Quiz = {
       id: 'quiz-' + Date.now(),
@@ -243,13 +251,13 @@ export const CreateQuizModal: React.FC<CreateQuizModalProps> = ({
       subject,
       grade,
       createdAt: new Date().toLocaleDateString('vi-VN'),
-      questionCount: totalQ || 28,
+      questionCount: totalQ,
       breakdown: bd,
       durationMinutes,
       totalPoints: 10,
       folder: subject.toUpperCase(),
       isInteractive,
-      questions: questions.length > 0 ? questions : [],
+      questions: questions,
     };
 
     onSaveQuiz(created);
