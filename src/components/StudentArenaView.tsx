@@ -41,6 +41,23 @@ interface StudentArenaViewProps {
   onResultSubmitted?: (sub: StudentSubmission) => void;
 }
 
+// Helper to determine if a question is 100% fully answered per BGDĐT requirements
+export const isQuestionFullyAnswered = (q: Question, ans: any): boolean => {
+  if (ans === undefined || ans === null) return false;
+  if (q.partType === 'part2_true_false') {
+    if (typeof ans !== 'object') return false;
+    if (q.subItems && q.subItems.length > 0) {
+      return q.subItems.every((si) => typeof ans[si.key] === 'boolean');
+    }
+    return Object.keys(ans).length >= 4;
+  }
+  if (q.partType === 'part3_short_answer') {
+    return typeof ans === 'string' && ans.trim().length > 0;
+  }
+  // Part 1 choice
+  return typeof ans === 'string' && ans.trim().length > 0;
+};
+
 export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
   quizTitle = 'ÔN CN12-1-2-3',
   session,
@@ -83,6 +100,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showSubmitConfirmModal, setShowSubmitConfirmModal] = useState(false);
   const [showCompletionSummaryModal, setShowCompletionSummaryModal] = useState(false);
+  const [showIncompleteNoticeModal, setShowIncompleteNoticeModal] = useState(false);
 
   // Post-exam Review & AI Tutor state (STRICTLY post-exam only)
   const [showReviewMode, setShowReviewMode] = useState(false);
@@ -377,7 +395,13 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
       }
     });
 
-    const calculatedScore = disqualified ? 0 : +((earnedPoints / (totalMaxPoints || 10)) * 10).toFixed(2);
+    // Thông tư 22/BGDĐT: Mọi đề thi dù bất kể bao nhiêu câu đều quy về thang điểm 10.0 (làm tròn 2 chữ số thập phân)
+    const rawScore = totalMaxPoints > 0
+      ? (earnedPoints / totalMaxPoints) * 10
+      : (correctCount / (questions.length || 1)) * 10;
+    const calculatedScore = disqualified
+      ? 0
+      : Math.min(10.0, Math.max(0.0, +(Math.round(rawScore * 100) / 100).toFixed(2)));
     const duration = resolvedDurationMinutes * 60 - secondsRemaining;
 
     // Call Realtime Engine: Auto-grades & instantly transmits back to Teacher Dashboard!
@@ -566,10 +590,16 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
             </div>
             <ul className="space-y-1.5 text-[11px] text-slate-300 list-disc list-inside">
               <li>
-                <span className="font-bold text-rose-300">Không được đổi tab màn hình / thu nhỏ cửa sổ:</span> Hệ thống tự động phát hiện và cảnh báo. Vi phạm quá <span className="font-black text-amber-300">{resolvedMaxTabSwitches} lần</span> bài thi sẽ tự động bị đình chỉ và thu hồi ngay!
+                <span className="font-bold text-amber-300">Bắt buộc làm hết 100% câu hỏi mới được nộp bài:</span> Học sinh phải trả lời đầy đủ tất cả {questions.length} câu hỏi mới được nộp bài. Hệ thống sẽ báo vị trí các câu còn sót nếu chưa hoàn thành.
               </li>
               <li>
-                <span className="font-bold text-amber-300">🔒 Gia sư AI bị khoá tuyệt đối khi đang làm bài:</span> Học sinh không thể xem giải thích khi thi để đảm bảo tính công bằng. Giải thích chi tiết từ AI Gemini 3.8 Flash sẽ mở sau khi nộp bài!
+                <span className="font-bold text-teal-300">Thang điểm 10 theo Thông tư 22/BGDĐT:</span> Mọi đề thi dù bất kể bao nhiêu câu đều được quy về thang điểm 10 chuẩn mực của Bộ Giáo dục và Đào tạo (làm tròn 2 chữ số thập phân).
+              </li>
+              <li>
+                <span className="font-bold text-blue-300">Chế độ mở đáp án đúng (≥ 4.0 điểm):</span> Học sinh làm bài đạt từ <strong className="text-amber-300">4.0 điểm trở lên</strong> mới được mở khóa xem đáp án đúng, lời giải chi tiết và Gia sư AI sau khi nộp.
+              </li>
+              <li>
+                <span className="font-bold text-rose-300">Không được đổi tab màn hình / thu nhỏ cửa sổ:</span> Hệ thống tự động phát hiện và cảnh báo. Vi phạm quá <span className="font-black text-amber-300">{resolvedMaxTabSwitches} lần</span> bài thi sẽ tự động bị đình chỉ và thu hồi ngay!
               </li>
               <li>
                 <span className="font-bold text-emerald-300">Tự động trả điểm về máy chủ:</span> Khi bấm Nộp bài hoặc hết giờ, kết quả điểm số sẽ được gửi tức thì về Bảng Giám Sát của Thầy Hồ Tấn Khải.
@@ -705,21 +735,8 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
      ========================================================================= */
   if (step === 'testing') {
     const isLastQuestion = currentIndex === questions.length - 1;
-    const answeredCount = questions.filter(q => {
-      const a = userAnswers[q.id];
-      if (!a) return false;
-      if (typeof a === 'object') return Object.keys(a).length > 0;
-      if (typeof a === 'string') return a.trim().length > 0;
-      return true;
-    }).length;
-
-    const isCurrentAnswered = (() => {
-      const a = userAnswers[currentQ?.id];
-      if (!a) return false;
-      if (typeof a === 'object') return Object.keys(a).length > 0;
-      if (typeof a === 'string') return a.trim().length > 0;
-      return true;
-    })();
+    const answeredCount = questions.filter(q => isQuestionFullyAnswered(q, userAnswers[q.id])).length;
+    const isCurrentAnswered = isQuestionFullyAnswered(currentQ, userAnswers[currentQ?.id]);
 
     return (
       <div
@@ -829,7 +846,12 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
           </div>
           <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
             {questions.map((q, idx) => {
-              const isAns = !!userAnswers[q.id];
+              const isFull = isQuestionFullyAnswered(q, userAnswers[q.id]);
+              const rawAns = userAnswers[q.id];
+              const isPartial = !isFull && (
+                typeof rawAns === 'object' ? Object.keys(rawAns || {}).length > 0 :
+                typeof rawAns === 'string' ? rawAns.length > 0 : false
+              );
               const isCurr = idx === currentIndex;
               return (
                 <button
@@ -841,11 +863,13 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                   className={`w-7 h-7 rounded-lg font-black text-xs flex items-center justify-center cursor-pointer transition-all ${
                     isCurr
                       ? 'bg-amber-300 text-slate-900 ring-2 ring-white scale-110 shadow-md'
-                      : isAns
+                      : isFull
                       ? 'bg-emerald-500 text-white'
+                      : isPartial
+                      ? 'bg-amber-500 text-slate-950 font-black ring-1 ring-amber-300'
                       : 'bg-white/20 text-white/80 hover:bg-white/30'
                   }`}
-                  title={`Câu ${idx + 1}: ${isAns ? 'Đã làm' : 'Chưa làm'}`}
+                  title={`Câu ${idx + 1}: ${isFull ? 'Đã hoàn thành' : isPartial ? 'Đang làm dở' : 'Chưa làm'}`}
                 >
                   {idx + 1}
                 </button>
@@ -1084,17 +1108,36 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
               <span>Khóa AI giải thích (Khi thi)</span>
             </div>
 
-            {/* Submit Button */}
-            <button
-              onClick={() => {
-                soundEffects.playClick();
-                setShowSubmitConfirmModal(true);
-              }}
-              className="btn-3d btn-3d-teal px-5 py-2.5 rounded-xl font-black text-xs flex items-center gap-1.5 cursor-pointer shadow-xl"
-            >
-              <FileCheck className="w-4 h-4" />
-              <span>Nộp bài thi</span>
-            </button>
+            {/* Submit Button with Completion Status Pill */}
+            <div className="flex items-center gap-2">
+              <span className={`text-[11px] font-bold px-2.5 py-1 rounded-xl hidden md:inline-block ${
+                answeredCount === questions.length
+                  ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/40'
+                  : 'bg-amber-500/20 text-amber-200 border border-amber-400/40'
+              }`}>
+                {answeredCount === questions.length ? '✓ Đã xong 100%' : `Còn ${questions.length - answeredCount} câu`}
+              </span>
+
+              <button
+                onClick={() => {
+                  const incomplete = questions
+                    .map((q, idx) => ({ q, idx, isAnswered: isQuestionFullyAnswered(q, userAnswers[q.id]) }))
+                    .filter(item => !item.isAnswered);
+
+                  if (incomplete.length > 0) {
+                    soundEffects.playWarning();
+                    setShowIncompleteNoticeModal(true);
+                  } else {
+                    soundEffects.playClick();
+                    setShowSubmitConfirmModal(true);
+                  }
+                }}
+                className="btn-3d btn-3d-teal px-5 py-2.5 rounded-xl font-black text-xs flex items-center gap-1.5 cursor-pointer shadow-xl text-white"
+              >
+                <FileCheck className="w-4 h-4" />
+                <span>Nộp bài thi</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1141,57 +1184,144 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
           </div>
         )}
 
-        {/* MODAL 2: CONFIRM SUBMIT MODAL */}
+        {/* MODAL 1.5: INCOMPLETE NOTICE MODAL (Bắt buộc hoàn thành 100% câu hỏi mới được nộp) */}
+        {showIncompleteNoticeModal && (() => {
+          const incomplete = questions
+            .map((q, idx) => ({ q, idx, isAnswered: isQuestionFullyAnswered(q, userAnswers[q.id]) }))
+            .filter(item => !item.isAnswered);
+
+          return (
+            <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+              <div className="bg-[#08282d] border-4 border-amber-400 rounded-3xl max-w-lg w-full text-white shadow-2xl p-6 sm:p-7 space-y-4 animate-in zoom-in-95">
+                <div className="text-center space-y-2">
+                  <div className="w-16 h-16 rounded-full bg-amber-500/20 text-amber-400 border-2 border-amber-400 flex items-center justify-center mx-auto animate-bounce">
+                    <ShieldAlert className="w-9 h-9 stroke-[2.5]" />
+                  </div>
+                  <h3 className="text-lg sm:text-xl font-black text-amber-300 uppercase tracking-wide">
+                    ⚠️ CHƯA THỂ NỘP BÀI THI
+                  </h3>
+                  <p className="text-xs text-amber-100 font-medium leading-relaxed">
+                    Theo quy chế kiểm tra trực tuyến, <span className="font-bold underline text-amber-300">bắt buộc học sinh phải hoàn thành 100% tất cả các câu hỏi</span> mới được nộp bài vào hệ thống.
+                  </p>
+                </div>
+
+                <div className="bg-black/50 p-4 rounded-2xl border border-amber-400/40 text-xs space-y-3">
+                  <div className="flex items-center justify-between font-bold">
+                    <span className="text-slate-200">Tiến độ làm bài hiện tại:</span>
+                    <span className="font-mono text-amber-400 font-black text-sm">
+                      {questions.length - incomplete.length} / {questions.length} câu ({Math.round(((questions.length - incomplete.length) / questions.length) * 100)}%)
+                    </span>
+                  </div>
+
+                  <div>
+                    <span className="text-[11px] font-bold text-rose-300 block mb-1.5">
+                      Danh sách {incomplete.length} câu bạn chưa hoàn thành (Bấm vào để đến ngay câu đó):
+                    </span>
+                    <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1.5 bg-black/40 rounded-xl border border-white/10">
+                      {incomplete.map((item) => (
+                        <button
+                          key={item.q.id}
+                          type="button"
+                          onClick={() => {
+                            soundEffects.playClick();
+                            setCurrentIndex(item.idx);
+                            setShowIncompleteNoticeModal(false);
+                          }}
+                          className="px-2.5 py-1.5 rounded-lg bg-rose-600/80 hover:bg-rose-500 text-white font-mono font-black text-xs cursor-pointer border border-rose-300 transition-all hover:scale-105 shadow-sm"
+                          title={`Bấm để chuyển tới Câu ${item.idx + 1}`}
+                        >
+                          Câu {item.idx + 1}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-teal-200/90 leading-relaxed italic">
+                    💡 Lưu ý: Với câu trắc nghiệm Đúng/Sai (Phần II), bạn cần chọn đủ cả 4 ý a, b, c, d; với câu trả lời ngắn (Phần III), bạn cần nhập đủ 4 ký tự.
+                  </p>
+                </div>
+
+                <div className="space-y-2 pt-1">
+                  {incomplete.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        soundEffects.playClick();
+                        setCurrentIndex(incomplete[0].idx);
+                        setShowIncompleteNoticeModal(false);
+                      }}
+                      className="btn-3d btn-3d-amber w-full py-3 text-xs rounded-xl font-black text-amber-950 uppercase tracking-wider cursor-pointer shadow-lg"
+                    >
+                      ➔ Chuyển ngay đến câu chưa làm (Câu {incomplete[0].idx + 1})
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEffects.playClick();
+                      setShowIncompleteNoticeModal(false);
+                    }}
+                    className="btn-3d btn-3d-slate w-full py-2.5 text-xs rounded-xl font-bold cursor-pointer text-slate-200"
+                  >
+                    Đóng và tiếp tục làm bài
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* MODAL 2: CONFIRM SUBMIT MODAL (Chỉ mở khi đã làm 100% câu hỏi) */}
         {showSubmitConfirmModal && (
-          <div className="fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-xs flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl max-w-md w-full text-slate-800 shadow-2xl p-6 space-y-5 animate-in zoom-in-95">
+          <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-[#0b2b30] border-2 border-emerald-400/50 rounded-3xl max-w-md w-full text-slate-100 shadow-2xl p-6 space-y-5 animate-in zoom-in-95">
               <div className="text-center space-y-1">
-                <div className="w-12 h-12 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center mx-auto mb-2">
-                  <FileCheck className="w-6 h-6" />
+                <div className="w-14 h-14 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-400/50 flex items-center justify-center mx-auto mb-2 shadow-lg">
+                  <FileCheck className="w-7 h-7" />
                 </div>
-                <h3 className="text-lg font-black text-slate-900">Xác nhận nộp bài thi</h3>
-                <p className="text-xs text-slate-500">Kiểm tra lại bài làm trước khi nộp vào hệ thống</p>
+                <h3 className="text-xl font-black text-white">Xác nhận nộp bài thi</h3>
+                <p className="text-xs text-teal-200/80">Bạn đã hoàn thành 100% tất cả {questions.length} câu hỏi</p>
               </div>
 
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-xs space-y-2">
+              <div className="bg-black/40 border border-teal-500/30 rounded-2xl p-4 text-xs space-y-2.5">
                 <div className="flex justify-between font-semibold">
-                  <span className="text-slate-600">Tổng số câu hỏi:</span>
-                  <span className="font-bold text-slate-900">{questions.length} câu</span>
+                  <span className="text-slate-300">Tổng số câu hỏi:</span>
+                  <span className="font-bold text-white font-mono">{questions.length} câu</span>
                 </div>
                 <div className="flex justify-between font-semibold">
-                  <span className="text-emerald-700">Đã trả lời:</span>
-                  <span className="font-bold text-emerald-700 font-mono">{answeredCount} câu</span>
-                </div>
-                <div className="flex justify-between font-semibold">
-                  <span className="text-amber-700">Chưa trả lời:</span>
-                  <span className="font-bold text-amber-700 font-mono">
-                    {questions.length - answeredCount} câu
+                  <span className="text-emerald-300">Trạng thái hoàn thành:</span>
+                  <span className="font-bold text-emerald-400 font-mono flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> {questions.length}/{questions.length} câu (100% ✓)
                   </span>
                 </div>
-                <div className="flex justify-between font-semibold border-t border-slate-200 pt-2">
-                  <span className="text-slate-600">Vi phạm chuyển tab:</span>
-                  <span className={`font-bold font-mono ${tabSwitchCount > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                    {tabSwitchCount} lần
+                <div className="flex justify-between font-semibold">
+                  <span className="text-amber-300">Quy đổi thang điểm:</span>
+                  <span className="font-bold text-amber-300">Thang điểm 10 (Thông tư 22)</span>
+                </div>
+                <div className="flex justify-between font-semibold">
+                  <span className="text-blue-300">Điều kiện mở đáp án đúng:</span>
+                  <span className="font-bold text-blue-300">Đạt từ 4.0 điểm trở lên</span>
+                </div>
+                <div className="flex justify-between font-semibold border-t border-teal-500/20 pt-2">
+                  <span className="text-slate-300">Vi phạm chuyển tab:</span>
+                  <span className={`font-bold font-mono ${tabSwitchCount > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                    {tabSwitchCount} lần {tabSwitchCount === 0 ? '✓' : ''}
                   </span>
                 </div>
               </div>
-
-              {questions.length - answeredCount > 0 && (
-                <p className="text-[11px] text-amber-800 bg-amber-50 p-2.5 rounded-xl border border-amber-200">
-                  ⚠️ Chú ý: Bạn vẫn còn <span className="font-bold">{questions.length - answeredCount} câu</span> chưa chọn đáp án. Bạn có muốn nộp ngay không?
-                </p>
-              )}
 
               <div className="flex gap-2">
                 <button
+                  type="button"
                   onClick={() => setShowSubmitConfirmModal(false)}
-                  className="btn-3d btn-3d-slate flex-1 py-2.5 text-xs rounded-xl font-bold cursor-pointer"
+                  className="btn-3d btn-3d-slate flex-1 py-3 text-xs rounded-xl font-bold cursor-pointer text-slate-200"
                 >
-                  Làm tiếp
+                  Xem lại thêm
                 </button>
                 <button
+                  type="button"
                   onClick={() => finishAndAutoSubmit(userAnswers, false)}
-                  className="btn-3d btn-3d-teal flex-1 py-2.5 text-xs rounded-xl font-black cursor-pointer shadow-md"
+                  className="btn-3d btn-3d-teal flex-1 py-3 text-xs rounded-xl font-black cursor-pointer shadow-lg text-white"
                 >
                   Xác nhận Nộp bài ➔
                 </button>
@@ -1211,6 +1341,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
     const unansweredCount = finalSubmission.unansweredCount ?? 0;
     const correctCount = finalSubmission.correctAnswersCount;
     const score = finalSubmission.score;
+    const isAnswerKeyUnlocked = (score ?? 0) >= 4.0;
 
     // Academic grade rating
     let gradeLabel = 'TRUNG BÌNH';
@@ -1246,10 +1377,13 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
           {/* Core Scorecard Grid (Điểm số, Đúng, Sai, Thời gian, Vi phạm) */}
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
             {/* Score */}
-            <div className="bg-[#06262b] border-2 border-emerald-400/40 rounded-2xl p-3 flex flex-col items-center justify-center col-span-2 sm:col-span-1">
+            <div className="bg-[#06262b] border-2 border-emerald-400/40 rounded-2xl p-3 flex flex-col items-center justify-center col-span-2 sm:col-span-1 shadow-md">
               <span className="text-[11px] text-teal-200/80 font-bold uppercase tracking-wider">Điểm số</span>
               <span className="text-3xl font-black text-emerald-400 font-mono mt-0.5">
                 {score} <span className="text-xs text-slate-400 font-normal">/ 10</span>
+              </span>
+              <span className="text-[9px] font-bold text-amber-300 mt-1 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-400/30">
+                Thang 10 (TT22/BGDĐT)
               </span>
             </div>
 
@@ -1292,6 +1426,33 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
             </div>
           </div>
 
+          {/* Answer Key Unlock Status Banner (Thang điểm 10 theo TT22 & Khóa/Mở khi >= 4.0 điểm) */}
+          {isAnswerKeyUnlocked ? (
+            <div className="p-3.5 bg-emerald-950/80 border-2 border-emerald-400/60 rounded-2xl text-left text-xs space-y-1 text-emerald-200 shadow-md">
+              <div className="font-black flex items-center gap-2 text-emerald-300 text-sm">
+                <Unlock className="w-4 h-4 text-emerald-400" />
+                <span>🔓 ĐÃ MỞ KHÓA TOÀN BỘ ĐÁP ÁN ĐÚNG & GIA SƯ AI (ĐẠT {score}/10 ≥ 4.0 ĐIỂM)</span>
+              </div>
+              <p className="text-[11px] text-emerald-300/80 leading-relaxed">
+                Chúc mừng bạn! Kết quả bài làm đạt chuẩn từ 4.0 điểm trở lên. Bạn có thể xem toàn bộ đáp án chuẩn và nhận hỗ trợ phân tích từ Gia sư AI Gemini 3.8 Flash!
+              </p>
+            </div>
+          ) : (
+            <div className="p-4 bg-amber-950/80 border-2 border-amber-400/70 rounded-2xl text-left text-xs space-y-2 text-amber-200 shadow-lg">
+              <div className="font-black flex items-center gap-2 text-amber-300 text-sm">
+                <Lock className="w-5 h-5 text-amber-400 shrink-0" />
+                <span>🔒 CHẾ ĐỘ KHÓA ĐÁP ÁN ĐÚNG (YÊU CẦU ĐẠT TỪ 4.0 ĐIỂM TRỞ LÊN)</span>
+              </div>
+              <p className="text-xs text-amber-100/90 leading-relaxed">
+                Điểm số hiện tại của bạn là <strong className="text-amber-300 font-mono text-sm">{score}/10 điểm</strong> (theo thang điểm 10 Thông tư 22/BGDĐT). Theo quy định, chỉ học sinh đạt <strong className="text-amber-300 font-bold">từ 4.0 điểm trở lên</strong> mới được mở khóa xem đáp án đúng và hướng dẫn giải từ Gia sư AI.
+              </p>
+              <div className="p-2.5 bg-black/40 rounded-xl border border-amber-400/30 text-[11px] text-amber-200/90 flex items-center gap-2">
+                <RotateCcw className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>Hãy ôn lại kiến thức bài học trong SGK và bấm <strong>&quot;Làm lại bài&quot;</strong> bên dưới để nâng cao điểm số và mở khóa đáp án nhé!</span>
+              </div>
+            </div>
+          )}
+
           {/* Real-time Server Sync Confirmation */}
           <div className="p-3 bg-emerald-950/70 border border-emerald-500/50 rounded-2xl text-left text-xs space-y-1 text-emerald-200">
             <div className="font-bold flex items-center gap-1.5 text-emerald-400">
@@ -1321,10 +1482,10 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                 soundEffects.playClick();
                 setShowReviewMode(!showReviewMode);
               }}
-              className="btn-3d btn-3d-blue px-5 py-3 text-xs rounded-xl font-black flex items-center gap-2 cursor-pointer shadow-lg"
+              className={`btn-3d ${isAnswerKeyUnlocked ? 'btn-3d-blue' : 'btn-3d-slate'} px-5 py-3 text-xs rounded-xl font-black flex items-center gap-2 cursor-pointer shadow-lg`}
             >
-              <Eye className="w-4 h-4" />
-              <span>{showReviewMode ? 'Ẩn xem lại chi tiết' : '🔍 Xem Lại Chi Tiết Bài Làm & Mở AI Gia Sư'}</span>
+              {isAnswerKeyUnlocked ? <Eye className="w-4 h-4" /> : <Lock className="w-4 h-4 text-amber-300" />}
+              <span>{showReviewMode ? 'Ẩn xem lại chi tiết' : isAnswerKeyUnlocked ? '🔍 Xem Lại Chi Tiết Bài Làm & Mở AI Gia Sư' : '🔍 Xem Lại Bài Làm (🔒 Đáp án đúng đang khóa)'}</span>
             </button>
 
             <button
@@ -1366,23 +1527,42 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
           {/* REVIEW MODE: Detailed Question Breakdown with UNLOCKED AI TUTOR */}
           {showReviewMode && (
             <div className="mt-6 pt-6 border-t border-slate-700/80 text-left space-y-6 animate-in fade-in duration-200">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <h3 className="text-base font-black text-white flex items-center gap-2">
                     <FileCheck className="w-5 h-5 text-teal-400" />
                     <span>Chi Tiết Từng Câu Hỏi & Hướng Dẫn Giải</span>
                   </h3>
                   <p className="text-[11px] text-teal-200/80">
-                    Bấm &quot;Gia sư AI giải thích&quot; ở từng câu để Gemini 3.8 Flash phân tích sâu kiến thức cho bạn!
+                    {isAnswerKeyUnlocked
+                      ? 'Bấm "Gia sư AI giải thích" ở từng câu để Gemini 3.8 Flash phân tích sâu kiến thức cho bạn!'
+                      : '🔒 Đáp án đúng của các câu sai đang bị khóa vì điểm thi dưới 4.0 điểm. Cần đạt từ 4.0 điểm trở lên để mở khóa!'}
                   </p>
                 </div>
                 <div className="flex items-center gap-1.5 text-xs">
-                  <span className="w-3 h-3 rounded-full bg-emerald-500 inline-block"></span>
-                  <span className="text-emerald-300 font-bold">Đáp án đúng</span>
-                  <span className="w-3 h-3 rounded-full bg-rose-500 inline-block ml-2"></span>
-                  <span className="text-rose-300 font-bold">Bạn chọn sai</span>
+                  {isAnswerKeyUnlocked ? (
+                    <>
+                      <span className="w-3 h-3 rounded-full bg-emerald-500 inline-block"></span>
+                      <span className="text-emerald-300 font-bold">Đáp án đúng</span>
+                      <span className="w-3 h-3 rounded-full bg-rose-500 inline-block ml-2"></span>
+                      <span className="text-rose-300 font-bold">Bạn chọn sai</span>
+                    </>
+                  ) : (
+                    <span className="text-amber-300 font-bold flex items-center gap-1 text-[11px] bg-amber-500/20 px-2 py-0.5 rounded-md border border-amber-400/30">
+                      <Lock className="w-3 h-3" /> Chế độ khóa đáp án đúng (&lt; 4.0đ)
+                    </span>
+                  )}
                 </div>
               </div>
+
+              {!isAnswerKeyUnlocked && (
+                <div className="p-3 rounded-xl bg-amber-950/60 border border-amber-400/50 text-amber-200 text-xs flex items-center gap-2">
+                  <Lock className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>
+                    Học sinh đạt <strong>{score}/10 điểm</strong>. Hệ thống chỉ hiển thị đáp án bạn đã chọn và kết quả Đúng/Sai. Đáp án chuẩn và Gia sư AI chỉ mở khóa khi làm lại đạt từ <strong>4.0 điểm trở lên</strong>.
+                  </span>
+                </div>
+              )}
 
               {/* Questions Loop */}
               <div className="space-y-4">
@@ -1447,18 +1627,33 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                           <p className="font-bold text-sm text-slate-100">{q.content}</p>
                         </div>
 
-                        {/* POST-EXAM ONLY AI TUTOR BUTTON */}
-                        <button
-                          onClick={() => handleAskAITutorPostExam(q)}
-                          disabled={isAiExplaining && aiExplainedQuestionId === q.id}
-                          className="btn-3d btn-3d-amber px-3 py-1.5 text-xs rounded-xl font-bold flex items-center gap-1.5 cursor-pointer text-amber-950 shrink-0 shadow-md"
-                          title="Hỏi AI Gemini 3.8 Flash giải thích câu này"
-                        >
-                          <Bot className="w-3.5 h-3.5 text-amber-900" />
-                          <span>
-                            {isAiExplaining && aiExplainedQuestionId === q.id ? 'AI đang viết...' : 'AI Gemini giải thích'}
-                          </span>
-                        </button>
+                        {/* POST-EXAM ONLY AI TUTOR BUTTON (Chỉ mở khi >= 4.0 điểm) */}
+                        {isAnswerKeyUnlocked ? (
+                          <button
+                            onClick={() => handleAskAITutorPostExam(q)}
+                            disabled={isAiExplaining && aiExplainedQuestionId === q.id}
+                            className="btn-3d btn-3d-amber px-3 py-1.5 text-xs rounded-xl font-bold flex items-center gap-1.5 cursor-pointer text-amber-950 shrink-0 shadow-md"
+                            title="Hỏi AI Gemini 3.8 Flash giải thích câu này"
+                          >
+                            <Bot className="w-3.5 h-3.5 text-amber-900" />
+                            <span>
+                              {isAiExplaining && aiExplainedQuestionId === q.id ? 'AI đang viết...' : 'AI Gemini giải thích'}
+                            </span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              soundEffects.playWarning();
+                              alert(`🔒 Gia sư AI đang bị khóa! Bạn đạt ${score}/10 điểm. Theo quy chế kiểm tra, học sinh cần đạt từ 4.0 điểm trở lên mới được mở khóa Gia sư AI giải thích.`);
+                            }}
+                            className="px-3 py-1.5 text-xs rounded-xl font-bold flex items-center gap-1.5 cursor-pointer bg-slate-800 text-slate-400 border border-slate-700 hover:border-amber-400 shrink-0 shadow-xs"
+                            title="Chỉ mở khóa khi bài làm đạt từ 4.0 điểm trở lên"
+                          >
+                            <Lock className="w-3.5 h-3.5 text-amber-400" />
+                            <span>🔒 Mở AI khi ≥ 4.0đ</span>
+                          </button>
+                        )}
                       </div>
 
                       {/* Part 1: Options Grid */}
@@ -1469,10 +1664,19 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                             const isRightAnswer = q.correctAnswer === opt.key;
 
                             let badgeStyle = 'bg-black/30 border-slate-700 text-slate-300';
-                            if (isRightAnswer) {
-                              badgeStyle = 'bg-emerald-900/80 border-emerald-400 text-emerald-100 font-bold';
-                            } else if (isChosen && !isRightAnswer) {
-                              badgeStyle = 'bg-rose-900/80 border-rose-400 text-rose-100 font-bold';
+                            if (isAnswerKeyUnlocked) {
+                              if (isRightAnswer) {
+                                badgeStyle = 'bg-emerald-900/80 border-emerald-400 text-emerald-100 font-bold';
+                              } else if (isChosen && !isRightAnswer) {
+                                badgeStyle = 'bg-rose-900/80 border-rose-400 text-rose-100 font-bold';
+                              }
+                            } else {
+                              // Locked mode: do NOT leak correct answer to student
+                              if (isChosen) {
+                                badgeStyle = isFullyCorrect
+                                  ? 'bg-emerald-900/80 border-emerald-400 text-emerald-100 font-bold'
+                                  : 'bg-rose-900/80 border-rose-400 text-rose-100 font-bold';
+                              }
                             }
 
                             return (
@@ -1486,15 +1690,29 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                                   </span>
                                   <span>{opt.text}</span>
                                 </div>
-                                {isRightAnswer && (
-                                  <span className="text-[10px] bg-emerald-400 text-emerald-950 px-2 py-0.5 rounded-md font-black shrink-0">
-                                    ✓ Đáp án đúng
-                                  </span>
-                                )}
-                                {isChosen && !isRightAnswer && (
-                                  <span className="text-[10px] bg-rose-400 text-rose-950 px-2 py-0.5 rounded-md font-black shrink-0">
-                                    ✗ Bạn chọn
-                                  </span>
+                                {isAnswerKeyUnlocked ? (
+                                  <>
+                                    {isRightAnswer && (
+                                      <span className="text-[10px] bg-emerald-400 text-emerald-950 px-2 py-0.5 rounded-md font-black shrink-0">
+                                        ✓ Đáp án đúng
+                                      </span>
+                                    )}
+                                    {isChosen && !isRightAnswer && (
+                                      <span className="text-[10px] bg-rose-400 text-rose-950 px-2 py-0.5 rounded-md font-black shrink-0">
+                                        ✗ Bạn chọn
+                                      </span>
+                                    )}
+                                  </>
+                                ) : (
+                                  <>
+                                    {isChosen && (
+                                      <span className={`text-[10px] px-2 py-0.5 rounded-md font-black shrink-0 ${
+                                        isFullyCorrect ? 'bg-emerald-400 text-emerald-950' : 'bg-rose-400 text-rose-950'
+                                      }`}>
+                                        {isFullyCorrect ? '✓ Bạn chọn đúng' : '✗ Bạn chọn sai'}
+                                      </span>
+                                    )}
+                                  </>
                                 )}
                               </div>
                             );
@@ -1524,11 +1742,18 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                                 </div>
                                 <div className="flex items-center gap-2 shrink-0">
                                   <span className="text-[10px] bg-black/40 px-2 py-1 rounded-md text-slate-300 font-bold">
-                                    Bạn chọn: {studentSubVal === true ? 'ĐÚNG' : studentSubVal === false ? 'SAI' : 'Chưa chọn'}
+                                    Bạn chọn: {studentSubVal === true ? 'ĐÚNG' : studentSubVal === false ? 'SAI' : 'Chưa chọn'} {isSubCorrect ? '✓' : '✗'}
                                   </span>
-                                  <span className="text-[10px] bg-emerald-400 text-emerald-950 px-2 py-1 rounded-md font-black">
-                                    Đáp án chuẩn: {si.isCorrect ? 'ĐÚNG (Gạch chân)' : 'SAI'}
-                                  </span>
+                                  {isAnswerKeyUnlocked ? (
+                                    <span className="text-[10px] bg-emerald-400 text-emerald-950 px-2 py-1 rounded-md font-black">
+                                      Đáp án chuẩn: {si.isCorrect ? 'ĐÚNG (Gạch chân)' : 'SAI'}
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] bg-amber-500/20 text-amber-200 border border-amber-400/40 px-2 py-1 rounded-md font-bold flex items-center gap-1">
+                                      <Lock className="w-3 h-3 text-amber-400" />
+                                      Đáp án chuẩn: 🔒 Cần ≥ 4.0đ
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             );
@@ -1546,21 +1771,38 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                             }`}>
                               {studentChoice || '(Để trống)'}
                             </span>
+                            <span className="ml-2 font-bold text-xs">{isFullyCorrect ? '✓ Đúng' : '✗ Sai'}</span>
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className="text-slate-300">Đáp án 4 ký tự chuẩn:</span>
-                            <span className="font-mono text-base font-black bg-emerald-400 text-emerald-950 px-2.5 py-0.5 rounded-lg shadow-sm">
-                              {q.shortAnswerCorrect || q.correctAnswer || '1234'}
-                            </span>
+                            {isAnswerKeyUnlocked ? (
+                              <>
+                                <span className="text-slate-300">Đáp án 4 ký tự chuẩn:</span>
+                                <span className="font-mono text-base font-black bg-emerald-400 text-emerald-950 px-2.5 py-0.5 rounded-lg shadow-sm">
+                                  {q.shortAnswerCorrect || q.correctAnswer || '1234'}
+                                </span>
+                              </>
+                            ) : (
+                              <span className="text-xs font-mono font-bold bg-amber-500/20 text-amber-200 border border-amber-400/40 px-2.5 py-1 rounded-lg flex items-center gap-1">
+                                <Lock className="w-3.5 h-3.5 text-amber-400" />
+                                Đáp án chuẩn: 🔒 Khóa (Cần ≥ 4.0đ)
+                              </span>
+                            )}
                           </div>
                         </div>
                       )}
 
                       {/* Static explanation if available */}
                       {q.explanation && (
-                        <div className="p-2.5 bg-black/40 rounded-xl text-[11px] text-slate-300 border border-white/10">
-                          <span className="font-bold text-teal-300">Lời giải chi tiết:</span> {q.explanation}
-                        </div>
+                        isAnswerKeyUnlocked ? (
+                          <div className="p-2.5 bg-black/40 rounded-xl text-[11px] text-slate-300 border border-white/10">
+                            <span className="font-bold text-teal-300">Lời giải chi tiết:</span> {q.explanation}
+                          </div>
+                        ) : (
+                          <div className="p-2.5 bg-amber-950/40 rounded-xl text-[11px] text-amber-200/90 border border-amber-400/20 flex items-center gap-1.5">
+                            <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                            <span>Lời giải chi tiết bị khóa. Học sinh cần đạt từ 4.0 điểm trở lên để mở xem.</span>
+                          </div>
+                        )
                       )}
                     </div>
                   );
@@ -1619,6 +1861,28 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
 
                 {/* Modal Scrollable Body */}
                 <div className="p-5 sm:p-6 space-y-6 overflow-y-auto flex-1 text-slate-100">
+                  {/* Status Note on Answer Key Unlock */}
+                  {!isAnswerKeyUnlocked ? (
+                    <div className="p-3.5 bg-amber-950/70 border border-amber-400/50 rounded-2xl text-xs text-amber-200 flex items-start gap-2.5 shadow-md">
+                      <Lock className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-bold block text-amber-300">
+                          🔒 Chế độ khóa đáp án đúng (Học sinh đạt {score}/10 &lt; 4.0 điểm)
+                        </span>
+                        <span className="text-[11px] text-amber-100/80 leading-relaxed block mt-0.5">
+                          Theo quy chế phòng thi, hệ thống chỉ mở xem đáp án chuẩn và lời giải chi tiết khi điểm bài thi đạt từ <strong>4.0 điểm trở lên</strong>. Hãy ôn lại bài và làm lại để mở khóa nhé!
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-emerald-950/70 border border-emerald-400/50 rounded-2xl text-xs text-emerald-200 flex items-center gap-2 shadow-sm">
+                      <Unlock className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>
+                        🔓 <strong>Đã mở khóa toàn bộ:</strong> Bạn đạt {score}/10 điểm (≥ 4.0 điểm). Đáp án chuẩn và Gia sư AI đã sẵn sàng hỗ trợ bạn ôn luyện!
+                      </span>
+                    </div>
+                  )}
+
                   {/* Score & Key Metrics Banner */}
                   <div className="bg-[#0b2e35] border border-teal-500/30 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-5 shadow-lg">
                     {/* Big Score Block */}
@@ -1628,7 +1892,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                         <span className="text-3xl font-black text-white font-mono leading-none my-0.5">
                           {score}
                         </span>
-                        <span className="text-[9px] text-emerald-200">thang 10</span>
+                        <span className="text-[9px] text-emerald-200">thang 10 (TT22)</span>
                       </div>
                       <div>
                         <div className="flex items-center gap-2 mb-1">
@@ -1705,9 +1969,11 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                             >
                               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                               <span>Câu {idx + 1}</span>
-                              <span className="text-[10px] bg-emerald-400 text-emerald-950 px-1 rounded font-black">
-                                {q.correctAnswer}
-                              </span>
+                              {isAnswerKeyUnlocked && (
+                                <span className="text-[10px] bg-emerald-400 text-emerald-950 px-1 rounded font-black">
+                                  {q.correctAnswer}
+                                </span>
+                              )}
                             </div>
                           );
                         })}
@@ -1723,7 +1989,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                         <span>Phân Tích Chi Tiết Các Câu Làm Sai ({wrongQuestions.length} câu)</span>
                       </h4>
                       <span className="text-[11px] text-rose-400/80 font-semibold">
-                        Xem kỹ đáp án và ôn lại ngay
+                        {isAnswerKeyUnlocked ? 'Xem kỹ đáp án và ôn lại ngay' : '🔒 Cần ≥ 4.0 điểm để mở đáp án chuẩn'}
                       </span>
                     </div>
 
@@ -1766,17 +2032,33 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                                   <p className="font-bold text-sm text-slate-100">{q.content}</p>
                                 </div>
 
-                                <button
-                                  onClick={() => handleAskAITutorPostExam(q)}
-                                  disabled={isAiExplaining && aiExplainedQuestionId === q.id}
-                                  className="btn-3d btn-3d-amber px-3 py-1.5 text-xs rounded-xl font-bold flex items-center gap-1.5 cursor-pointer text-amber-950 shrink-0 shadow-md"
-                                  title="Nhận giải thích từ AI Gemini 3.8 Flash"
-                                >
-                                  <Bot className="w-3.5 h-3.5 text-amber-900" />
-                                  <span>
-                                    {isAiExplaining && aiExplainedQuestionId === q.id ? 'AI đang viết...' : 'AI giải thích'}
-                                  </span>
-                                </button>
+                                {/* AI Button: only unlocked when score >= 4.0 */}
+                                {isAnswerKeyUnlocked ? (
+                                  <button
+                                    onClick={() => handleAskAITutorPostExam(q)}
+                                    disabled={isAiExplaining && aiExplainedQuestionId === q.id}
+                                    className="btn-3d btn-3d-amber px-3 py-1.5 text-xs rounded-xl font-bold flex items-center gap-1.5 cursor-pointer text-amber-950 shrink-0 shadow-md"
+                                    title="Nhận giải thích từ AI Gemini 3.8 Flash"
+                                  >
+                                    <Bot className="w-3.5 h-3.5 text-amber-900" />
+                                    <span>
+                                      {isAiExplaining && aiExplainedQuestionId === q.id ? 'AI đang viết...' : 'AI giải thích'}
+                                    </span>
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      soundEffects.playWarning();
+                                      alert(`🔒 Gia sư AI đang bị khóa! Bạn đạt ${score}/10 điểm. Vui lòng làm lại đạt từ 4.0 điểm trở lên để mở khóa Gia sư AI.`);
+                                    }}
+                                    className="px-3 py-1.5 text-xs rounded-xl font-bold flex items-center gap-1.5 cursor-pointer bg-slate-800 text-slate-400 border border-slate-700 hover:border-amber-400 shrink-0"
+                                    title="Khóa: Cần đạt từ 4.0 điểm trở lên"
+                                  >
+                                    <Lock className="w-3.5 h-3.5 text-amber-400" />
+                                    <span>🔒 Mở AI khi ≥ 4.0đ</span>
+                                  </button>
+                                )}
                               </div>
 
                               {/* Student vs Correct comparison */}
@@ -1799,30 +2081,51 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                                   </div>
                                 </div>
 
-                                <div className="p-2.5 rounded-xl bg-emerald-900/60 border border-emerald-400/50 flex items-start gap-2">
-                                  <span className="w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
-                                    ✓
-                                  </span>
-                                  <div>
-                                    <span className="text-[10px] font-black uppercase text-emerald-300 block">
-                                      Đáp án chuẩn:
+                                {isAnswerKeyUnlocked ? (
+                                  <div className="p-2.5 rounded-xl bg-emerald-900/60 border border-emerald-400/50 flex items-start gap-2">
+                                    <span className="w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
+                                      ✓
                                     </span>
-                                    <span className="font-bold text-emerald-100">
-                                      {q.partType === 'part2_true_false'
-                                        ? (q.correctAnswer || 'Xem chi tiết từng ý')
-                                        : q.partType === 'part3_short_answer'
-                                        ? `Đáp án 4 số: ${q.shortAnswerCorrect || q.correctAnswer || '1234'}`
-                                        : `${q.correctAnswer}. ${correctChoiceObj?.text || ''}`}
-                                    </span>
+                                    <div>
+                                      <span className="text-[10px] font-black uppercase text-emerald-300 block">
+                                        Đáp án chuẩn:
+                                      </span>
+                                      <span className="font-bold text-emerald-100">
+                                        {q.partType === 'part2_true_false'
+                                          ? (q.correctAnswer || 'Xem chi tiết từng ý')
+                                          : q.partType === 'part3_short_answer'
+                                          ? `Đáp án 4 số: ${q.shortAnswerCorrect || q.correctAnswer || '1234'}`
+                                          : `${q.correctAnswer}. ${correctChoiceObj?.text || ''}`}
+                                      </span>
+                                    </div>
                                   </div>
-                                </div>
+                                ) : (
+                                  <div className="p-2.5 rounded-xl bg-amber-950/60 border border-amber-400/40 flex items-start gap-2">
+                                    <Lock className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                                    <div>
+                                      <span className="text-[10px] font-black uppercase text-amber-300 block">
+                                        Đáp án chuẩn:
+                                      </span>
+                                      <span className="font-bold text-amber-200 text-xs">
+                                        🔒 Khóa (Cần đạt từ 4.0 điểm trở lên để mở)
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
 
                               {/* Quick Explanation */}
                               {q.explanation && (
-                                <div className="p-2.5 bg-black/40 rounded-xl text-[11px] text-slate-300 border border-white/10">
-                                  <span className="font-bold text-teal-300">Lời giải chi tiết:</span> {q.explanation}
-                                </div>
+                                isAnswerKeyUnlocked ? (
+                                  <div className="p-2.5 bg-black/40 rounded-xl text-[11px] text-slate-300 border border-white/10">
+                                    <span className="font-bold text-teal-300">Lời giải chi tiết:</span> {q.explanation}
+                                  </div>
+                                ) : (
+                                  <div className="p-2.5 bg-amber-950/40 rounded-xl text-[11px] text-amber-200/90 border border-amber-400/20 flex items-center gap-1.5">
+                                    <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                    <span>Lời giải chi tiết bị khóa. Học sinh cần đạt từ 4.0 điểm trở lên để mở xem.</span>
+                                  </div>
+                                )
                               )}
                             </div>
                           );
@@ -1856,7 +2159,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                                 </span>
                               </div>
                               <div className="p-2 bg-emerald-950/60 rounded-lg text-emerald-200 border border-emerald-500/30">
-                                <strong>Đáp án đúng:</strong> {q.partType === 'part2_true_false' ? (q.correctAnswer || 'Xem chi tiết') : q.partType === 'part3_short_answer' ? (q.shortAnswerCorrect || '1234') : `${q.correctAnswer}. ${correctChoiceObj?.text || ''}`}
+                                <strong>Đáp án đúng:</strong> {isAnswerKeyUnlocked ? (q.partType === 'part2_true_false' ? (q.correctAnswer || 'Xem chi tiết') : q.partType === 'part3_short_answer' ? (q.shortAnswerCorrect || '1234') : `${q.correctAnswer}. ${correctChoiceObj?.text || ''}`) : '🔒 Khóa (Cần ≥ 4.0đ)'}
                               </div>
                             </div>
                           );
