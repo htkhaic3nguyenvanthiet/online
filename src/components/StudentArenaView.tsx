@@ -353,7 +353,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
   };
 
   const handleShortAnswerChange = (val: string) => {
-    const clean = val.replace(/[^0-9a-zA-Z]/g, '').slice(0, 4);
+    const clean = val.replace(/[^0-9a-zA-Z,\.\-]/g, '').slice(0, 4);
     setUserAnswers({
       ...userAnswers,
       [currentQ.id]: clean
@@ -422,9 +422,11 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
         totalMaxPoints += 0.25;
         const expected = (q.shortAnswerCorrect || q.correctAnswer || '1234').toString().trim().toLowerCase();
         const studentAns = (ans || '').toString().trim().toLowerCase();
+        const normExpected = expected.replace(/\./g, ',');
+        const normStudent = studentAns.replace(/\./g, ',');
         if (!ans) {
           unansweredCount++;
-        } else if (studentAns === expected) {
+        } else if (normStudent === normExpected) {
           earnedPoints += 0.25;
           correctCount++;
         } else {
@@ -1001,11 +1003,11 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
           </div>
         )}
 
-        {/* 2. PHẦN III: TRẢ LỜI NGẮN (4 KÝ TỰ SỐ - MẶC ĐỊNH A.1234) */}
+        {/* 2. PHẦN III: TRẢ LỜI NGẮN (TỐI ĐA 4 KÝ TỰ, HỖ TRỢ SỐ, DẤU "-", ",", ".") */}
         {currentQ.partType === 'part3_short_answer' && (
           <div className="bg-[#052b2d]/70 backdrop-blur-xs border border-teal-300/30 rounded-2xl p-5 text-center max-w-lg mx-auto w-full space-y-4 my-2 shadow-xl flex-1 flex flex-col justify-center">
             <div className="text-xs text-teal-200 font-bold uppercase tracking-wider">
-              Nhập 4 ký tự số vào ô bên dưới (Mặc định Thông tư 7991: A.1234):
+              Nhập trả lời ngắn (tối đa 4 ký tự, hỗ trợ số, dấu &quot;-&quot;, &quot;,&quot;, &quot;.&quot;):
             </div>
             <div className="flex justify-center items-center gap-2">
               <input
@@ -1013,7 +1015,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                 maxLength={4}
                 value={userAnswers[currentQ.id] || ''}
                 onChange={(e) => handleShortAnswerChange(e.target.value)}
-                placeholder="1234"
+                placeholder="vd: 5, -2, 3,5"
                 className="w-48 text-center text-3xl font-black font-mono tracking-widest bg-white text-slate-900 border-4 border-amber-300 rounded-2xl py-2.5 px-4 shadow-inner focus:outline-none focus:ring-4 focus:ring-teal-300"
               />
             </div>
@@ -1044,14 +1046,29 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                 }}
                 className="btn-3d btn-3d-slate px-3 py-1.5 rounded-xl text-white cursor-pointer"
               >
-                Xóa 1 số
+                Xóa 1 ký tự
               </button>
               <button
                 type="button"
-                onClick={() => handleShortAnswerChange('1234')}
-                className="btn-3d btn-3d-teal px-3 py-1.5 rounded-xl font-bold text-white cursor-pointer"
+                onClick={() => {
+                  const cur = userAnswers[currentQ.id] || '';
+                  if (cur.length < 4) handleShortAnswerChange(cur + '-');
+                }}
+                className="btn-3d btn-3d-slate px-3 py-1.5 rounded-xl font-bold text-white cursor-pointer"
+                title="Dấu trừ (-)"
               >
-                Đặt mặc định 1234
+                - (Trừ)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const cur = userAnswers[currentQ.id] || '';
+                  if (cur.length < 4) handleShortAnswerChange(cur + ',');
+                }}
+                className="btn-3d btn-3d-slate px-3 py-1.5 rounded-xl font-bold text-white cursor-pointer"
+                title="Dấu phẩy (,)"
+              >
+                , (Phẩy)
               </button>
               <button
                 type="button"
