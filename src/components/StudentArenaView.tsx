@@ -36,6 +36,7 @@ interface StudentArenaViewProps {
   quizTitle?: string;
   session?: ExamSession;
   customQuestions?: Question[];
+  isDirectStudentMode?: boolean;
   onExit: () => void;
   onResultSubmitted?: (sub: StudentSubmission) => void;
 }
@@ -44,6 +45,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
   quizTitle = 'ÔN CN12-1-2-3',
   session,
   customQuestions,
+  isDirectStudentMode = false,
   onExit,
   onResultSubmitted
 }) => {
@@ -575,6 +577,36 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
             </ul>
           </div>
 
+          {/* Student Identity Input Card */}
+          <div className="bg-[#211631]/95 border border-pink-400/30 rounded-2xl p-4 text-left space-y-3">
+            <div className="text-xs font-bold text-pink-200 uppercase tracking-wider flex items-center gap-1.5">
+              <span>👤 Thông tin học sinh làm bài thi:</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Họ và tên học sinh:</label>
+                <input
+                  type="text"
+                  required
+                  value={studentName}
+                  onChange={(e) => setStudentName(e.target.value)}
+                  placeholder="Nhập họ và tên học sinh..."
+                  className="w-full px-3.5 py-2.5 bg-white text-slate-900 font-bold rounded-xl border-2 border-pink-300 focus:outline-none focus:ring-2 focus:ring-pink-500 shadow-inner"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Lớp / Số báo danh:</label>
+                <input
+                  type="text"
+                  value={studentInfo}
+                  onChange={(e) => setStudentInfo(e.target.value)}
+                  placeholder="Ví dụ: 12A5 - SBD: 052"
+                  className="w-full px-3.5 py-2.5 bg-white text-slate-900 font-bold rounded-xl border-2 border-pink-300 focus:outline-none focus:ring-2 focus:ring-pink-500 shadow-inner"
+                />
+              </div>
+            </div>
+          </div>
+
           {/* Start CTA Button */}
           {hasExceededAttempts ? (
             <div className="p-3.5 bg-rose-900/80 border border-rose-500 rounded-2xl text-rose-100 text-xs font-bold text-center">
@@ -583,12 +615,16 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
           ) : (
             <button
               onClick={() => {
+                if (!studentName.trim()) {
+                  alert('Vui lòng nhập Họ và tên trước khi bắt đầu làm bài!');
+                  return;
+                }
                 soundEffects.playClick();
-                setStep('info-modal');
+                setStep('testing');
               }}
               className="btn-3d btn-3d-pink w-full py-4 text-base rounded-2xl flex items-center justify-center gap-2 cursor-pointer font-black tracking-wide uppercase shadow-2xl"
             >
-              <span>▶ Bắt đầu làm bài thi (Lượt {attemptNumber})</span>
+              <span>▶ Bắt đầu vào làm bài thi ngay (Lượt {attemptNumber})</span>
             </button>
           )}
         </div>
@@ -700,8 +736,14 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
           <button
             onClick={() => {
               soundEffects.playClick();
-              if (confirm('Nếu thoát bây giờ, bài thi của bạn sẽ không được nộp! Bạn có chắc muốn thoát?')) {
-                onExit();
+              if (isDirectStudentMode) {
+                if (confirm('Nếu thoát bây giờ, bài thi của bạn sẽ không được nộp! Bạn có chắc muốn quay lại sảnh chờ bài thi này?')) {
+                  setStep('landing');
+                }
+              } else {
+                if (confirm('Nếu thoát bây giờ, bài thi của bạn sẽ không được nộp! Bạn có chắc muốn thoát?')) {
+                  onExit();
+                }
               }
             }}
             className="w-10 h-10 rounded-xl bg-white/20 hover:bg-white/30 border border-white/30 flex items-center justify-center text-white cursor-pointer transition-colors"
@@ -1297,15 +1339,28 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
               <span>Làm lại bài ({completedAttemptsCount}/{resolvedAllowedAttempts === 0 ? '∞' : resolvedAllowedAttempts})</span>
             </button>
 
-            <button
-              onClick={() => {
-                soundEffects.playClick();
-                onExit();
-              }}
-              className="btn-3d btn-3d-teal px-5 py-3 text-xs rounded-xl font-bold cursor-pointer"
-            >
-              Về Trang Quản Trị
-            </button>
+            {!isDirectStudentMode ? (
+              <button
+                onClick={() => {
+                  soundEffects.playClick();
+                  onExit();
+                }}
+                className="btn-3d btn-3d-teal px-5 py-3 text-xs rounded-xl font-bold cursor-pointer"
+              >
+                Về Trang Quản Trị
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  soundEffects.playClick();
+                  alert('Điểm số và bài làm của bạn đã được ghi nhận vào hệ thống Bảng Giám Sát của Thầy Hồ Tấn Khải. Bạn có thể đóng tab trình duyệt này!');
+                }}
+                className="btn-3d btn-3d-emerald px-5 py-3 text-xs rounded-xl font-bold cursor-pointer text-white shadow-md flex items-center gap-1.5"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>✓ Đã nộp bài & Đóng</span>
+              </button>
+            )}
           </div>
 
           {/* REVIEW MODE: Detailed Question Breakdown with UNLOCKED AI TUTOR */}

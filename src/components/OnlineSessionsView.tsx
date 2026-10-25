@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { ExamSession, Quiz, AntiCheatConfig } from '../types/quiz';
 import { soundEffects } from '../utils/soundEffects';
+import { getStudentExamShareUrl } from '../utils/urlHelper';
 
 interface OnlineSessionsViewProps {
   sessions: ExamSession[];
@@ -81,7 +82,8 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
 
   const handleCopyLink = (session: ExamSession) => {
     soundEffects.playClick();
-    navigator.clipboard?.writeText(session.shareUrl);
+    const link = getStudentExamShareUrl(session.id);
+    navigator.clipboard?.writeText(link);
     setCopiedId(session.id);
     setTimeout(() => setCopiedId(null), 2000);
   };
@@ -91,15 +93,16 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
     if (!newTitle.trim()) return;
 
     soundEffects.playClick();
+    const newId = 'sess-' + Math.floor(1000000 + Math.random() * 9000000);
     const created: ExamSession = {
-      id: 'sess-' + Math.floor(1000000 + Math.random() * 9000000),
+      id: newId,
       title: newTitle.trim(),
       quizId: 'custom-quiz',
       className: newClass,
       startTime: newStartTime,
       endTime: newEndTime,
       status: 'active',
-      shareUrl: `https://htkhaic3nguyenvanthiet.github.io/online/#/exam/${Math.random().toString(36).slice(2, 8)}`,
+      shareUrl: getStudentExamShareUrl(newId),
       allowedAttempts: newAttempts,
       durationMinutes: newDuration,
       totalSubmissions: 0,
@@ -678,7 +681,7 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
             </div>
 
             <div className="p-2.5 bg-teal-50 rounded-xl text-teal-800 text-xs font-mono break-all text-left">
-              {activeQrModal.shareUrl}
+              {getStudentExamShareUrl(activeQrModal.id)}
             </div>
 
             <div className="flex gap-2">

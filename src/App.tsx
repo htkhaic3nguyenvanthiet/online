@@ -4,6 +4,7 @@ import { mockQuizzes, mockClassrooms, mockSessions } from './data/mockData';
 import { realtimeEngine } from './services/realtimeEngine';
 import { soundEffects } from './utils/soundEffects';
 import { cloudStorageService } from './services/cloudStorageService';
+import { getStudentExamShareUrl, getExamIdFromUrl } from './utils/urlHelper';
 
 import { TopNavbar } from './components/TopNavbar';
 import { Sidebar } from './components/Sidebar';
@@ -42,6 +43,60 @@ export default function App() {
   const [latestToastSub, setLatestToastSub] = useState<StudentSubmission | null>(null);
   const [activeStudentExamTitle, setActiveStudentExamTitle] = useState('ÔN CN12-1-2-3');
   const [activeStudentExamSession, setActiveStudentExamSession] = useState<ExamSession | null>(null);
+  const [isDirectStudentMode, setIsDirectStudentMode] = useState<boolean>(() => {
+    return typeof window !== 'undefined' && getExamIdFromUrl() !== null;
+  });
+
+  // URL Routing check for direct student exam link (?exam=... or #exam/...)
+  useEffect(() => {
+    const handleUrlRouting = () => {
+      const examParam = getExamIdFromUrl();
+      if (examParam) {
+        setIsDirectStudentMode(true);
+        setAppMode('student');
+
+        // 1. Look for matching session
+        const matchedSess = sessions.find(
+          (s) => s.id === examParam || s.quizId === examParam
+        );
+        if (matchedSess) {
+          setActiveStudentExamSession(matchedSess);
+          setActiveStudentExamTitle(matchedSess.title);
+          return;
+        }
+
+        // 2. Look for matching quiz
+        const matchedQuiz = quizzes.find(
+          (q) =>
+            q.id === examParam ||
+            q.title.toLowerCase() === examParam.toLowerCase() ||
+            examParam.startsWith(q.id.slice(0, 6))
+        );
+        if (matchedQuiz) {
+          setActiveStudentExamTitle(matchedQuiz.title);
+          setActiveStudentExamSession({
+            id: 'sess-' + matchedQuiz.id,
+            title: matchedQuiz.title,
+            quizId: matchedQuiz.id,
+            className: 'Khối 12',
+            startTime: 'Vừa tạo',
+            endTime: 'Sau 30 ngày',
+            status: 'active',
+            shareUrl: getStudentExamShareUrl(matchedQuiz.id),
+            allowedAttempts: 5,
+            durationMinutes: matchedQuiz.durationMinutes || 45,
+            totalSubmissions: 0,
+            maxSlots: 500,
+            isArenaMode: matchedQuiz.isInteractive
+          });
+        }
+      }
+    };
+
+    handleUrlRouting();
+    window.addEventListener('popstate', handleUrlRouting);
+    return () => window.removeEventListener('popstate', handleUrlRouting);
+  }, [sessions, quizzes]);
 
   // Load persistent cloud state on mount
   useEffect(() => {
@@ -115,15 +170,16 @@ export default function App() {
   };
 
   const handleDeployQuiz = (quiz: Quiz) => {
+    const newSessionId = 'sess-' + Math.floor(1000000 + Math.random() * 9000000);
     const newSession: ExamSession = {
-      id: 'sess-' + Math.floor(1000000 + Math.random() * 9000000),
+      id: newSessionId,
       title: quiz.title,
       quizId: quiz.id,
       className: 'Tất cả các lớp (Khối 12)',
       startTime: 'Vừa tạo',
       endTime: 'Sau 30 ngày',
       status: 'active',
-      shareUrl: `https://htkhaic3nguyenvanthiet.github.io/online/#/exam/${quiz.id.slice(0, 6)}/start`,
+      shareUrl: getStudentExamShareUrl(newSessionId),
       allowedAttempts: 5,
       durationMinutes: quiz.durationMinutes,
       totalSubmissions: 0,
@@ -140,6 +196,39 @@ export default function App() {
     setSubmissions([]);
     localStorage.removeItem('testonline_active_draft');
   };
+
+  // ISOLATED DIRECT STUDENT MODE (When student accesses via shared link)
+  // Absolutely no TopNavbar, no Sidebar, no teacher administration controls
+  if (isDirectStudentMode) {
+    const currentExamId = getExamIdFromUrl();
+    const activeQuiz =
+      quizzes.find((q) => q.id === activeStudentExamSession?.quizId || q.title === activeStudentExamTitle) ||
+      (currentExamId ? quizzes.find((q) => q.id === currentExamId || currentExamId.startsWith(q.id.slice(0, 6))) : null) ||
+      quizzes[0];
+
+    const questionsToServe = (activeQuiz?.questions && activeQuiz.questions.length > 0)
+      ? activeQuiz.questions
+      : undefined;
+
+    return (
+      <div className="min-h-screen bg-[#140b22] flex flex-col font-sans text-slate-800">
+        <main className="flex-1 max-w-5xl mx-auto w-full p-2 sm:p-4 md:p-6 flex flex-col justify-center">
+          <StudentArenaView
+            quizTitle={activeStudentExamTitle || activeQuiz?.title || 'Bài kiểm tra trực tuyến'}
+            session={activeStudentExamSession || sessions[0]}
+            customQuestions={questionsToServe}
+            isDirectStudentMode={true}
+            onExit={() => {
+              // Direct student mode: student stays within their exam interface
+            }}
+            onResultSubmitted={() => {
+              // result submitted callback
+            }}
+          />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans text-slate-800">

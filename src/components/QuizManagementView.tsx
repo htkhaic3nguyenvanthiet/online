@@ -282,13 +282,15 @@ ${q.options ? q.options.map(o => `  ${o.key}. ${o.text}`).join('\n') : q.subItem
               {!selectedFolder && customFolders.map((folderName) => (
                 <tr
                   key={folderName}
-                  onClick={() => {
-                    soundEffects.playClick();
-                    setSelectedFolder(folderName);
-                  }}
                   className="hover:bg-slate-50/70 transition-colors cursor-pointer font-bold"
                 >
-                  <td className="py-3.5 px-5 flex items-center gap-2.5 text-slate-900">
+                  <td
+                    onClick={() => {
+                      soundEffects.playClick();
+                      setSelectedFolder(folderName);
+                    }}
+                    className="py-3.5 px-5 flex items-center gap-2.5 text-slate-900"
+                  >
                     <Folder className="w-4 h-4 text-amber-500 fill-amber-500" />
                     <span>{folderName}</span>
                   </td>
@@ -297,7 +299,32 @@ ${q.options ? q.options.map(o => `  ${o.key}. ${o.text}`).join('\n') : q.subItem
                     {quizzes.filter(q => q.folder === folderName).length} đề
                   </td>
                   <td className="py-3.5 px-5 text-right text-slate-400 text-[11px]">
-                    Bấm để mở thư mục →
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          soundEffects.playClick();
+                          setSelectedFolder(folderName);
+                        }}
+                        className="text-teal-600 hover:underline font-semibold"
+                      >
+                        Mở thư mục →
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          soundEffects.playClick();
+                          if (confirm(`Bạn có chắc chắn muốn xóa thư mục "${folderName}"?`)) {
+                            setCustomFolders((prev) => prev.filter((f) => f !== folderName));
+                            soundEffects.playCorrect();
+                          }
+                        }}
+                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"
+                        title="Xóa thư mục này"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
