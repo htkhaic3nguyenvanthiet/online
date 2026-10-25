@@ -22,7 +22,8 @@ import {
   RotateCcw,
   Calendar,
   Lock,
-  Layers
+  Layers,
+  ClipboardCheck
 } from 'lucide-react';
 import { ExamSession, Quiz, AntiCheatConfig } from '../types/quiz';
 import { soundEffects } from '../utils/soundEffects';
@@ -34,6 +35,7 @@ interface OnlineSessionsViewProps {
   onCreateSession: () => void;
   onOpenLiveMonitor: (session: ExamSession) => void;
   onOpenStudentExam: (sessionId: string) => void;
+  onOpenAttendanceSummary?: (session: ExamSession) => void;
   onToggleSessionStatus?: (sessionId: string) => void;
   onDeleteSession?: (sessionId: string) => void;
   onAddNewSession?: (newSession: ExamSession) => void;
@@ -46,6 +48,7 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
   onCreateSession,
   onOpenLiveMonitor,
   onOpenStudentExam,
+  onOpenAttendanceSummary,
   onToggleSessionStatus,
   onDeleteSession,
   onAddNewSession,
@@ -326,6 +329,19 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
                         >
                           Vào thi
                         </button>
+                        {onOpenAttendanceSummary && (
+                          <button
+                            onClick={() => {
+                              soundEffects.playClick();
+                              onOpenAttendanceSummary(sess);
+                            }}
+                            className="px-2 py-1 text-[11px] font-black text-emerald-800 bg-emerald-50 border border-emerald-300 rounded-md hover:bg-emerald-100 cursor-pointer flex items-center gap-1 shadow-xs"
+                            title="Bảng tổng kết điểm số và điểm danh học sinh của bài kiểm tra này"
+                          >
+                            <ClipboardCheck className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Điểm danh</span>
+                          </button>
+                        )}
                         <button
                           onClick={() => {
                             soundEffects.playClick();

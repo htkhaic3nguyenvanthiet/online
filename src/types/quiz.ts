@@ -147,6 +147,7 @@ export type ActiveTab =
   | 'classes'
   | 'quizzes'
   | 'online-sessions'
+  | 'attendance-summary'
   | 'paper-exam'
   | 'kids-quiz'
   | 'game-arena'

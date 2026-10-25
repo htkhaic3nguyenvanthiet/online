@@ -564,9 +564,38 @@ export const mockQuizzes: Quiz[] = [
 
 export const mockClassrooms: Classroom[] = [
   {
+    id: 'class-12a5',
+    name: 'LỚP 12A5 - THPT MANG THÍT',
+    studentCount: 18,
+    academicYear: '2025 - 2026',
+    createdAt: '05/09/2025',
+    code: '12A5MT',
+    teacherName: 'Thầy Hồ Tấn Khải',
+    students: [
+      { id: 'st-21', fullName: 'Nguyễn Thành Nam', studentCode: '12A501', lastScore: 9.8, completedExams: 22 },
+      { id: 'st-22', fullName: 'Lý Kim Ngân', studentCode: '12A502', lastScore: 10.0, completedExams: 22 },
+      { id: 'st-23', fullName: 'Phan Quốc Bảo', studentCode: '12A503', lastScore: 9.2, completedExams: 21 },
+      { id: 'st-24', fullName: 'Trần Thị Mỹ Duyên', studentCode: '12A504', lastScore: 10.0, completedExams: 24 },
+      { id: 'st-25', fullName: 'Lê Hoàng Phúc', studentCode: '12A505', lastScore: 8.5, completedExams: 19 },
+      { id: 'st-26', fullName: 'Nguyễn Minh Trí', studentCode: '12A506', lastScore: 9.0, completedExams: 20 },
+      { id: 'st-27', fullName: 'Phạm Ngọc Thảo', studentCode: '12A507', lastScore: 9.8, completedExams: 23 },
+      { id: 'st-28', fullName: 'Đỗ Thị Ánh Tuyết', studentCode: '12A508', lastScore: 8.8, completedExams: 18 },
+      { id: 'st-29', fullName: 'Võ Minh Quân', studentCode: '12A509', lastScore: 9.5, completedExams: 21 },
+      { id: 'st-30', fullName: 'Bùi Gia Huy', studentCode: '12A510', lastScore: 7.25, completedExams: 16 },
+      { id: 'st-31', fullName: 'Huỳnh Văn An', studentCode: '12A511', lastScore: 8.5, completedExams: 19 },
+      { id: 'st-32', fullName: 'Ngô Thanh Hải', studentCode: '12A512', lastScore: 6.5, completedExams: 14 },
+      { id: 'st-33', fullName: 'Đặng Phương Vy', studentCode: '12A513', lastScore: 9.25, completedExams: 20 },
+      { id: 'st-34', fullName: 'Trần Minh Đạt', studentCode: '12A514', lastScore: 5.5, completedExams: 12 },
+      { id: 'st-35', fullName: 'Hồ Gia Linh', studentCode: '12A515', lastScore: 8.75, completedExams: 18 },
+      { id: 'st-36', fullName: 'Vũ Quốc Khánh', studentCode: '12A516', lastScore: 0.0, completedExams: 0 },
+      { id: 'st-37', fullName: 'Dương Mai Anh', studentCode: '12A517', lastScore: 0.0, completedExams: 0 },
+      { id: 'st-38', fullName: 'Phan Tấn Dũng', studentCode: '12A518', lastScore: 0.0, completedExams: 0 }
+    ]
+  },
+  {
     id: 'class-cnnn',
     name: 'ÔN THI TỐT NGHIỆP CNNN',
-    studentCount: 28,
+    studentCount: 15,
     academicYear: '2025 - 2026',
     createdAt: '10/04/2026',
     code: 'CNNN25',
@@ -576,13 +605,20 @@ export const mockClassrooms: Classroom[] = [
       { id: 'st-02', fullName: 'Trần Thị Mỹ Duyên', studentCode: '25CN002', lastScore: 10.0, completedExams: 15 },
       { id: 'st-03', fullName: 'Lê Hoàng Phúc', studentCode: '25CN003', lastScore: 8.5, completedExams: 13 },
       { id: 'st-04', fullName: 'Nguyễn Minh Trí', studentCode: '25CN004', lastScore: 9.0, completedExams: 14 },
-      { id: 'st-05', fullName: 'Phạm Ngọc Thảo', studentCode: '25CN005', lastScore: 9.8, completedExams: 15 }
+      { id: 'st-05', fullName: 'Phạm Ngọc Thảo', studentCode: '25CN005', lastScore: 9.8, completedExams: 15 },
+      { id: 'st-06', fullName: 'Võ Minh Quân', studentCode: '25CN006', lastScore: 9.5, completedExams: 12 },
+      { id: 'st-07', fullName: 'Nguyễn Thành Nam', studentCode: '25CN007', lastScore: 8.75, completedExams: 11 },
+      { id: 'st-08', fullName: 'Lý Kim Ngân', studentCode: '25CN008', lastScore: 9.5, completedExams: 13 },
+      { id: 'st-09', fullName: 'Bùi Gia Huy', studentCode: '25CN009', lastScore: 7.75, completedExams: 10 },
+      { id: 'st-10', fullName: 'Đỗ Thị Ánh Tuyết', studentCode: '25CN010', lastScore: 8.25, completedExams: 12 },
+      { id: 'st-10b', fullName: 'Lâm Văn Khoa', studentCode: '25CN011', lastScore: 0.0, completedExams: 0 },
+      { id: 'st-10c', fullName: 'Tạ Minh Tú', studentCode: '25CN012', lastScore: 0.0, completedExams: 0 }
     ]
   },
   {
     id: 'class-cn12',
     name: 'ÔN THI TỐT NGHIỆP CÔNG NGHỆ 12',
-    studentCount: 23,
+    studentCount: 12,
     academicYear: '2024 - 2025',
     createdAt: '22/05/2025',
     code: 'CN12TN',
@@ -590,21 +626,10 @@ export const mockClassrooms: Classroom[] = [
     students: [
       { id: 'st-11', fullName: 'Võ Minh Quân', studentCode: '24CN011', lastScore: 9.5, completedExams: 18 },
       { id: 'st-12', fullName: 'Đỗ Thị Ánh Tuyết', studentCode: '24CN012', lastScore: 8.8, completedExams: 17 },
-      { id: 'st-13', fullName: 'Bùi Gia Huy', studentCode: '24CN013', lastScore: 9.0, completedExams: 18 }
-    ]
-  },
-  {
-    id: 'class-12a5',
-    name: 'LỚP 12A5 - THPT MANG THÍT',
-    studentCount: 42,
-    academicYear: '2025 - 2026',
-    createdAt: '05/09/2025',
-    code: '12A5MT',
-    teacherName: 'Thầy Hồ Tấn Khải',
-    students: [
-      { id: 'st-21', fullName: 'Nguyễn Thành Nam', studentCode: '12A501', lastScore: 9.8, completedExams: 22 },
-      { id: 'st-22', fullName: 'Lý Kim Ngân', studentCode: '12A502', lastScore: 10.0, completedExams: 22 },
-      { id: 'st-23', fullName: 'Phan Quốc Bảo', studentCode: '12A503', lastScore: 9.2, completedExams: 21 }
+      { id: 'st-13', fullName: 'Bùi Gia Huy', studentCode: '24CN013', lastScore: 9.0, completedExams: 18 },
+      { id: 'st-14', fullName: 'Nguyễn Văn Đạt', studentCode: '24CN014', lastScore: 8.5, completedExams: 15 },
+      { id: 'st-15', fullName: 'Lê Thị Diễm', studentCode: '24CN015', lastScore: 9.25, completedExams: 16 },
+      { id: 'st-16', fullName: 'Trần Gia Bảo', studentCode: '24CN016', lastScore: 0.0, completedExams: 0 }
     ]
   }
 ];

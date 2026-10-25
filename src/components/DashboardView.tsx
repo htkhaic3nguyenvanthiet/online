@@ -14,7 +14,8 @@ import {
   ArrowRight,
   ShieldCheck,
   CheckCircle,
-  Zap
+  Zap,
+  ClipboardCheck
 } from 'lucide-react';
 import { ActiveTab, ConcurrentSystemMetrics } from '../types/quiz';
 import { soundEffects } from '../utils/soundEffects';
@@ -56,6 +57,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              onClick={() => {
+                soundEffects.playClick();
+                onNavigate('attendance-summary');
+              }}
+              className="btn-3d btn-3d-teal px-4 py-2 text-xs rounded-xl flex items-center gap-2 cursor-pointer font-bold"
+            >
+              <ClipboardCheck className="w-4 h-4" />
+              <span>Bảng Điểm & Điểm Danh</span>
+            </button>
             <button
               onClick={() => {
                 soundEffects.playClick();

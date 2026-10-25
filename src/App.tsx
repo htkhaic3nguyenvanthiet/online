@@ -22,11 +22,13 @@ import { CreateQuizModal } from './components/CreateQuizModal';
 import { EditQuizModal } from './components/EditQuizModal';
 import { CloudDriveModal } from './components/CloudDriveModal';
 import { LiveNotificationToast } from './components/LiveNotificationToast';
+import { ExamSummaryAttendanceView } from './components/ExamSummaryAttendanceView';
 import { Award, School, UserCheck, ShieldCheck, Cloud, Sparkles } from 'lucide-react';
 
 export default function App() {
   const [appMode, setAppMode] = useState<'teacher' | 'student'>('teacher');
   const [currentTab, setCurrentTab] = useState<ActiveTab>('dashboard');
+  const [selectedSummarySessionId, setSelectedSummarySessionId] = useState<string>('4975878');
 
   const [quizzes, setQuizzes] = useState<Quiz[]>(mockQuizzes);
   const [classrooms, setClassrooms] = useState<Classroom[]>(mockClassrooms);
@@ -415,6 +417,10 @@ export default function App() {
                   quizzes={quizzes}
                   onCreateSession={() => setIsCreateQuizModalOpen(true)}
                   onOpenLiveMonitor={() => setCurrentTab('live-monitor')}
+                  onOpenAttendanceSummary={(sess) => {
+                    setSelectedSummarySessionId(sess.id);
+                    setCurrentTab('attendance-summary');
+                  }}
                   onOpenStudentExam={(sessId) => {
                     const sess = sessions.find((s) => s.id === sessId);
                     if (sess) {
@@ -436,6 +442,43 @@ export default function App() {
                   }}
                   onUpdateSession={(updatedSess) => {
                     setSessions((prev) => prev.map((s) => (s.id === updatedSess.id ? updatedSess : s)));
+                  }}
+                />
+              )}
+
+              {currentTab === 'attendance-summary' && (
+                <ExamSummaryAttendanceView
+                  sessions={sessions}
+                  quizzes={quizzes}
+                  classrooms={classrooms}
+                  submissions={submissions}
+                  selectedSessionId={selectedSummarySessionId}
+                  onSelectSession={(sessId) => setSelectedSummarySessionId(sessId)}
+                  onOpenStudentExam={(sessId) => {
+                    const sess = sessions.find((s) => s.id === sessId);
+                    if (sess) {
+                      setActiveStudentExamSession(sess);
+                      setActiveStudentExamTitle(sess.title);
+                    }
+                    setAppMode('student');
+                  }}
+                  onResetStudentAttempts={(sessId, studentName) => {
+                    try {
+                      localStorage.removeItem(`testonline_attempts_${sessId}_${studentName.trim()}`);
+                      setSubmissions((prev) =>
+                        prev.filter(
+                          (s) =>
+                            !(
+                              s.sessionId === sessId &&
+                              s.studentName.trim().toLowerCase() === studentName.trim().toLowerCase()
+                            )
+                        )
+                      );
+                      soundEffects.playCorrect();
+                      alert(`Đã cấp quyền cho học sinh "${studentName}" được thi lại từ đầu!`);
+                    } catch {
+                      // ignore
+                    }
                   }}
                 />
               )}

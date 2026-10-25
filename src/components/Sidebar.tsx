@@ -12,7 +12,8 @@ import {
   User,
   Activity,
   CheckCircle2,
-  Award
+  Award,
+  ClipboardCheck
 } from 'lucide-react';
 import { ActiveTab } from '../types/quiz';
 import { soundEffects } from '../utils/soundEffects';
@@ -33,6 +34,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'classes', label: 'Quản lý lớp', icon: <Users className="w-5 h-5" /> },
     { id: 'quizzes', label: 'Kho đề kiểm tra', icon: <FolderKanban className="w-5 h-5" /> },
     { id: 'online-sessions', label: 'Giao đề Online', icon: <Send className="w-5 h-5" />, badge: '18', badgeColor: 'bg-emerald-500' },
+    {
+      id: 'attendance-summary',
+      label: 'Bảng điểm & Điểm danh',
+      icon: <ClipboardCheck className="w-5 h-5 text-emerald-300 group-hover:text-white" />,
+      badge: 'Thống kê',
+      badgeColor: 'bg-teal-500'
+    },
     { id: 'paper-exam', label: 'Giao đề giấy', icon: <FileText className="w-5 h-5" /> },
     { id: 'kids-quiz', label: 'Giao đề Thiếu nhi', icon: <Palette className="w-5 h-5" /> },
     { 
