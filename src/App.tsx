@@ -169,6 +169,11 @@ export default function App() {
           <StudentArenaView
             quizTitle={activeStudentExamTitle}
             session={activeStudentExamSession || sessions[0]}
+            customQuestions={
+              quizzes.find(
+                (q) => q.title === activeStudentExamTitle || q.id === activeStudentExamSession?.quizId
+              )?.questions
+            }
             onExit={() => setAppMode('teacher')}
             onResultSubmitted={() => {
               // result submitted callback

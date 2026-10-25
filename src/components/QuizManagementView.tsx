@@ -84,9 +84,9 @@ Tổng số câu: ${quiz.questionCount} câu
 
 ${quiz.questions?.map((q, idx) => `
 Câu ${idx + 1}: ${q.content}
-${q.options.map(o => `  ${o.key}. ${o.text}`).join('\n')}
-=> Đáp án đúng: ${q.correctAnswer}
-=> Hướng dẫn giải: ${q.explanation || 'Theo SGK chuẩn.'}
+${q.options ? q.options.map(o => `  ${o.key}. ${o.text}`).join('\n') : q.subItems ? q.subItems.map(si => `  ${si.key}) ${si.content} [${si.isCorrect ? 'ĐÚNG' : 'SAI'}]`).join('\n') : `  Đáp án 4 ký tự: ${q.shortAnswerCorrect || '1234'}`}
+=> Đáp án chuẩn: ${q.correctAnswer || q.shortAnswerCorrect || 'A'}
+=> Hướng dẫn giải: ${q.explanation || 'Theo Thông tư 7991 BGD&ĐT.'}
 `).join('\n----------------------------------------\n') || 'Nội dung câu hỏi đang được biên tập.'}
 `;
 
@@ -140,6 +140,19 @@ ${q.options.map(o => `  ${o.key}. ${o.text}`).join('\n')}
           >
             <FolderPlus className="w-4 h-4 text-teal-600" />
             <span>Tạo mới thư mục</span>
+          </button>
+
+          {/* 3D Button: Tải file Word */}
+          <button
+            onClick={() => {
+              soundEffects.playClick();
+              onCreateQuiz();
+            }}
+            className="btn-3d btn-3d-slate px-3.5 py-1.5 text-xs rounded-xl flex items-center gap-1.5 cursor-pointer font-bold border border-emerald-300 text-emerald-800 bg-emerald-50"
+            title="Tải lên tệp Word (.docx) nhận dạng 3 phần Thông tư 7991"
+          >
+            <Upload className="w-4 h-4 text-emerald-600" />
+            <span>Upload Word 7991</span>
           </button>
 
           {/* 3D Button: Tạo mới đề */}

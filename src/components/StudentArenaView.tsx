@@ -35,6 +35,7 @@ import { aiService } from '../services/aiService';
 interface StudentArenaViewProps {
   quizTitle?: string;
   session?: ExamSession;
+  customQuestions?: Question[];
   onExit: () => void;
   onResultSubmitted?: (sub: StudentSubmission) => void;
 }
@@ -42,6 +43,7 @@ interface StudentArenaViewProps {
 export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
   quizTitle = 'ÔN CN12-1-2-3',
   session,
+  customQuestions,
   onExit,
   onResultSubmitted
 }) => {
@@ -60,9 +62,9 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
   const [studentInfo, setStudentInfo] = useState('12A5 - SBD: 052');
 
   // Test state
-  const questions = sampleQuestions;
+  const questions = (customQuestions && customQuestions.length > 0) ? customQuestions : sampleQuestions;
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [userAnswers, setUserAnswers] = useState<Record<string, OptionKey>>({});
+  const [userAnswers, setUserAnswers] = useState<Record<string, any>>({});
   const [streak, setStreak] = useState(0);
   const [fontSizeOffset, setFontSizeOffset] = useState(0);
   const [secondsRemaining, setSecondsRemaining] = useState(resolvedDurationMinutes * 60);
@@ -268,8 +270,29 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
     }
   };
 
+  const handleToggleSubItem = (subKey: 'a' | 'b' | 'c' | 'd', isTrue: boolean) => {
+    soundEffects.playClick();
+    const currentSubMap = userAnswers[currentQ.id] || {};
+    const updated = {
+      ...userAnswers,
+      [currentQ.id]: {
+        ...currentSubMap,
+        [subKey]: isTrue
+      }
+    };
+    setUserAnswers(updated);
+  };
+
+  const handleShortAnswerChange = (val: string) => {
+    const clean = val.replace(/[^0-9a-zA-Z]/g, '').slice(0, 4);
+    setUserAnswers({
+      ...userAnswers,
+      [currentQ.id]: clean
+    });
+  };
+
   const finishAndAutoSubmit = (
-    answers: Record<string, OptionKey>,
+    answers: Record<string, any>,
     disqualified = false,
     disReason?: string
   ) => {
@@ -286,22 +309,73 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
       }
     }
 
+    let earnedPoints = 0;
+    let totalMaxPoints = 0;
     let correctCount = 0;
     let wrongCount = 0;
     let unansweredCount = 0;
 
     questions.forEach((q) => {
       const ans = answers[q.id];
-      if (!ans) {
-        unansweredCount++;
-      } else if (ans === q.correctAnswer) {
-        correctCount++;
+      if (q.partType === 'part2_true_false') {
+        totalMaxPoints += 1.0;
+        if (!ans || Object.keys(ans).length === 0) {
+          unansweredCount++;
+        } else {
+          let subCorrect = 0;
+          q.subItems?.forEach((si) => {
+            if (ans[si.key] === si.isCorrect) {
+              subCorrect++;
+            }
+          });
+          // Circular 7991 grading rule:
+          // 1 correct item: 0.1 pt
+          // 2 correct items: 0.25 pt
+          // 3 correct items: 0.5 pt
+          // 4 correct items: 1.0 pt
+          let qPt = 0;
+          if (subCorrect === 1) qPt = 0.1;
+          else if (subCorrect === 2) qPt = 0.25;
+          else if (subCorrect === 3) qPt = 0.5;
+          else if (subCorrect === 4) qPt = 1.0;
+
+          earnedPoints += qPt;
+          if (subCorrect === 4) {
+            correctCount++;
+          } else if (subCorrect > 0) {
+            correctCount += subCorrect / 4;
+            wrongCount++;
+          } else {
+            wrongCount++;
+          }
+        }
+      } else if (q.partType === 'part3_short_answer') {
+        totalMaxPoints += 0.25;
+        const expected = (q.shortAnswerCorrect || q.correctAnswer || '1234').toString().trim().toLowerCase();
+        const studentAns = (ans || '').toString().trim().toLowerCase();
+        if (!ans) {
+          unansweredCount++;
+        } else if (studentAns === expected) {
+          earnedPoints += 0.25;
+          correctCount++;
+        } else {
+          wrongCount++;
+        }
       } else {
-        wrongCount++;
+        // Part 1 choice
+        totalMaxPoints += 0.25;
+        if (!ans) {
+          unansweredCount++;
+        } else if (ans === q.correctAnswer) {
+          earnedPoints += 0.25;
+          correctCount++;
+        } else {
+          wrongCount++;
+        }
       }
     });
 
-    const calculatedScore = disqualified ? 0 : +((correctCount / questions.length) * 10).toFixed(2);
+    const calculatedScore = disqualified ? 0 : +((earnedPoints / (totalMaxPoints || 10)) * 10).toFixed(2);
     const duration = resolvedDurationMinutes * 60 - secondsRemaining;
 
     // Call Realtime Engine: Auto-grades & instantly transmits back to Teacher Dashboard!
@@ -356,11 +430,17 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
 
     try {
       const chosen = finalSubmission?.answers[q.id];
+      const fallbackOptions = q.options && q.options.length > 0
+        ? q.options
+        : q.subItems
+        ? q.subItems.map(si => ({ key: si.key.toUpperCase() as OptionKey, text: `${si.content} (${si.isCorrect ? 'ĐÚNG' : 'SAI'})` }))
+        : [{ key: 'A' as OptionKey, text: `Đáp án 4 ký tự: ${q.shortAnswerCorrect || '1234'}` }];
+
       const explanation = await aiService.explainQuestion({
         questionContent: q.content,
-        options: q.options,
-        selectedAnswer: chosen || undefined,
-        correctAnswer: q.correctAnswer,
+        options: fallbackOptions,
+        selectedAnswer: typeof chosen === 'object' ? JSON.stringify(chosen) : (chosen || undefined),
+        correctAnswer: (q.correctAnswer || q.shortAnswerCorrect || 'A').toString(),
         subject: 'Công nghệ 12 - THPT Mang Thít'
       });
       setAiExplanationText(explanation);
@@ -589,8 +669,21 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
      ========================================================================= */
   if (step === 'testing') {
     const isLastQuestion = currentIndex === questions.length - 1;
-    const answeredCount = Object.keys(userAnswers).length;
-    const isCurrentAnswered = !!userAnswers[currentQ.id];
+    const answeredCount = questions.filter(q => {
+      const a = userAnswers[q.id];
+      if (!a) return false;
+      if (typeof a === 'object') return Object.keys(a).length > 0;
+      if (typeof a === 'string') return a.trim().length > 0;
+      return true;
+    }).length;
+
+    const isCurrentAnswered = (() => {
+      const a = userAnswers[currentQ?.id];
+      if (!a) return false;
+      if (typeof a === 'object') return Object.keys(a).length > 0;
+      if (typeof a === 'string') return a.trim().length > 0;
+      return true;
+    })();
 
     return (
       <div
@@ -722,10 +815,17 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
         {/* Question Statement Box */}
         <div className="my-3 bg-white/10 backdrop-blur-xs border border-white/30 rounded-2xl p-5 text-white shadow-lg text-center">
           <div className="text-xs font-bold text-pink-100 uppercase tracking-wider mb-1 flex items-center justify-center gap-2">
+            <span className="bg-white/20 px-2 py-0.5 rounded-md font-mono text-[10px]">
+              {currentQ.partType === 'part2_true_false'
+                ? 'PHẦN II: TRẮC NGHIỆM ĐÚNG / SAI'
+                : currentQ.partType === 'part3_short_answer'
+                ? 'PHẦN III: TRẢ LỜI NGẮN (4 KÝ TỰ)'
+                : 'PHẦN I: TRẮC NGHIỆM 4 PHƯƠNG ÁN'}
+            </span>
             <span>Câu {currentIndex + 1} / {questions.length}</span>
             {isCurrentAnswered && (
               <span className="bg-emerald-400 text-emerald-950 text-[10px] font-black px-2 py-0.5 rounded-full">
-                ✓ Đã chọn đáp án: {userAnswers[currentQ.id]}
+                ✓ Đã hoàn thành
               </span>
             )}
           </div>
@@ -737,42 +837,156 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
           </h2>
         </div>
 
-        {/* 4 Big 3D Tactile Buttons (A, B, C, D) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 my-2 flex-1 items-stretch">
-          {currentQ.options.map((opt) => {
-            const isSelected = userAnswers[currentQ.id] === opt.key;
-            let colorClass = 'btn-3d-blue';
-            if (opt.key === 'B') colorClass = 'btn-3d-emerald';
-            if (opt.key === 'C') colorClass = 'btn-3d-orange';
-            if (opt.key === 'D') colorClass = 'btn-3d-purple';
-
-            return (
-              <button
-                key={opt.key}
-                onClick={() => handleSelectOption(opt.key)}
-                className={`btn-3d ${colorClass} p-5 rounded-2xl flex flex-col items-center justify-center text-center cursor-pointer min-h-[135px] relative transition-all ${
-                  isSelected ? 'ring-4 ring-white scale-102 shadow-2xl brightness-115' : 'opacity-95'
-                }`}
-              >
-                <div className="w-10 h-10 rounded-full bg-white/25 flex items-center justify-center font-black text-lg mb-2 shadow-inner">
-                  {opt.key}
-                </div>
-                <span
-                  className="font-extrabold text-white leading-snug drop-shadow-xs"
-                  style={{ fontSize: `${14 + fontSizeOffset}px` }}
+        {/* 1. PHẦN II: TRẮC NGHIỆM ĐÚNG / SAI (a, b, c, d) */}
+        {currentQ.partType === 'part2_true_false' && currentQ.subItems && (
+          <div className="space-y-2.5 my-2 flex-1">
+            {currentQ.subItems.map((si) => {
+              const selectedValue = userAnswers[currentQ.id]?.[si.key];
+              return (
+                <div
+                  key={si.key}
+                  className="bg-white/15 backdrop-blur-xs border border-white/25 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md"
                 >
-                  {opt.text}
-                </span>
-
-                {isSelected && (
-                  <div className="absolute top-2 right-2 bg-white text-emerald-700 w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs shadow-md">
-                    ✓
+                  <div className="flex-1 text-left">
+                    <span className="font-black text-amber-300 text-sm mr-2">{si.key})</span>
+                    <span
+                      className="font-semibold text-white leading-relaxed"
+                      style={{ fontSize: `${14 + fontSizeOffset}px` }}
+                    >
+                      {si.content}
+                    </span>
                   </div>
-                )}
+                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleSubItem(si.key, true)}
+                      className={`px-4 py-2 rounded-xl font-black text-xs cursor-pointer transition-all ${
+                        selectedValue === true
+                          ? 'btn-3d btn-3d-emerald ring-2 ring-white scale-105 shadow-lg'
+                          : 'bg-white/20 hover:bg-white/30 text-white'
+                      }`}
+                    >
+                      ✓ ĐÚNG
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleSubItem(si.key, false)}
+                      className={`px-4 py-2 rounded-xl font-black text-xs cursor-pointer transition-all ${
+                        selectedValue === false
+                          ? 'btn-3d btn-3d-pink ring-2 ring-white scale-105 shadow-lg'
+                          : 'bg-white/20 hover:bg-white/30 text-white'
+                      }`}
+                    >
+                      ✕ SAI
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* 2. PHẦN III: TRẢ LỜI NGẮN (4 KÝ TỰ SỐ - MẶC ĐỊNH A.1234) */}
+        {currentQ.partType === 'part3_short_answer' && (
+          <div className="bg-white/15 backdrop-blur-xs border border-white/25 rounded-2xl p-5 text-center max-w-lg mx-auto w-full space-y-4 my-2 shadow-xl flex-1 flex flex-col justify-center">
+            <div className="text-xs text-pink-200 font-bold uppercase tracking-wider">
+              Nhập 4 ký tự số vào ô bên dưới (Mặc định Thông tư 7991: A.1234):
+            </div>
+            <div className="flex justify-center items-center gap-2">
+              <input
+                type="text"
+                maxLength={4}
+                value={userAnswers[currentQ.id] || ''}
+                onChange={(e) => handleShortAnswerChange(e.target.value)}
+                placeholder="1234"
+                className="w-48 text-center text-3xl font-black font-mono tracking-widest bg-white text-slate-900 border-4 border-amber-300 rounded-2xl py-2.5 px-4 shadow-inner focus:outline-none focus:ring-4 focus:ring-pink-300"
+              />
+            </div>
+            {/* On-screen tactile touch keypad */}
+            <div className="grid grid-cols-5 gap-2 max-w-xs mx-auto pt-1">
+              {['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'].map((digit) => (
+                <button
+                  key={digit}
+                  type="button"
+                  onClick={() => {
+                    const cur = userAnswers[currentQ.id] || '';
+                    if (cur.length < 4) {
+                      handleShortAnswerChange(cur + digit);
+                    }
+                  }}
+                  className="btn-3d btn-3d-slate py-2 text-sm font-black rounded-xl text-white cursor-pointer"
+                >
+                  {digit}
+                </button>
+              ))}
+            </div>
+            <div className="flex justify-center gap-2 pt-1 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  const cur = userAnswers[currentQ.id] || '';
+                  handleShortAnswerChange(cur.slice(0, -1));
+                }}
+                className="btn-3d btn-3d-slate px-3 py-1.5 rounded-xl text-white cursor-pointer"
+              >
+                Xóa 1 số
               </button>
-            );
-          })}
-        </div>
+              <button
+                type="button"
+                onClick={() => handleShortAnswerChange('1234')}
+                className="btn-3d btn-3d-teal px-3 py-1.5 rounded-xl font-bold text-white cursor-pointer"
+              >
+                Đặt mặc định 1234
+              </button>
+              <button
+                type="button"
+                onClick={() => handleShortAnswerChange('')}
+                className="btn-3d btn-3d-pink px-3 py-1.5 rounded-xl text-white cursor-pointer"
+              >
+                Xóa trắng
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 3. PHẦN I: TRẮC NGHIỆM 4 PHƯƠNG ÁN LỰA CHỌN (A, B, C, D) */}
+        {(!currentQ.partType || currentQ.partType === 'part1_choice') && currentQ.options && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 my-2 flex-1 items-stretch">
+            {currentQ.options.map((opt) => {
+              const isSelected = userAnswers[currentQ.id] === opt.key;
+              let colorClass = 'btn-3d-blue';
+              if (opt.key === 'B') colorClass = 'btn-3d-emerald';
+              if (opt.key === 'C') colorClass = 'btn-3d-orange';
+              if (opt.key === 'D') colorClass = 'btn-3d-purple';
+
+              return (
+                <button
+                  key={opt.key}
+                  onClick={() => handleSelectOption(opt.key)}
+                  className={`btn-3d ${colorClass} p-5 rounded-2xl flex flex-col items-center justify-center text-center cursor-pointer min-h-[135px] relative transition-all ${
+                    isSelected ? 'ring-4 ring-white scale-102 shadow-2xl brightness-115' : 'opacity-95'
+                  }`}
+                >
+                  <div className="w-10 h-10 rounded-full bg-white/25 flex items-center justify-center font-black text-lg mb-2 shadow-inner">
+                    {opt.key}
+                  </div>
+                  <span
+                    className="font-extrabold text-white leading-snug drop-shadow-xs"
+                    style={{ fontSize: `${14 + fontSizeOffset}px` }}
+                  >
+                    {opt.text}
+                  </span>
+
+                  {isSelected && (
+                    <div className="absolute top-2 right-2 bg-white text-emerald-700 w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs shadow-md">
+                      ✓
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Bottom Action Bar: Navigation + Strict AI Lock + Submit Button */}
         <div className="pt-3 flex flex-wrap items-center justify-between gap-3 border-t border-pink-400/40 mt-2">
@@ -1119,14 +1333,35 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
               <div className="space-y-4">
                 {questions.map((q, idx) => {
                   const studentChoice = finalSubmission.answers[q.id];
-                  const isCorrect = studentChoice === q.correctAnswer;
-                  const isUnanswered = !studentChoice;
+                  let isFullyCorrect = false;
+                  let resultLabel = '';
+
+                  if (q.partType === 'part2_true_false') {
+                    let subCorrect = 0;
+                    q.subItems?.forEach(si => {
+                      if (studentChoice && studentChoice[si.key] === si.isCorrect) {
+                        subCorrect++;
+                      }
+                    });
+                    isFullyCorrect = subCorrect === 4;
+                    resultLabel = `Đúng ${subCorrect}/4 ý (${
+                      subCorrect === 4 ? '1.0 đ' : subCorrect === 3 ? '0.5 đ' : subCorrect === 2 ? '0.25 đ' : subCorrect === 1 ? '0.1 đ' : '0.0 đ'
+                    })`;
+                  } else if (q.partType === 'part3_short_answer') {
+                    const expected = (q.shortAnswerCorrect || q.correctAnswer || '1234').toString().trim().toLowerCase();
+                    const entered = (studentChoice || '').toString().trim().toLowerCase();
+                    isFullyCorrect = entered === expected;
+                    resultLabel = isFullyCorrect ? 'Đúng (+0.25 đ)' : 'Sai (0.0 đ)';
+                  } else {
+                    isFullyCorrect = studentChoice === q.correctAnswer;
+                    resultLabel = isFullyCorrect ? 'Đúng (+0.25 đ)' : (!studentChoice ? 'Chưa trả lời (0.0 đ)' : 'Sai (0.0 đ)');
+                  }
 
                   return (
                     <div
                       key={q.id}
                       className={`p-4 rounded-2xl border ${
-                        isCorrect
+                        isFullyCorrect
                           ? 'bg-emerald-950/40 border-emerald-500/40'
                           : 'bg-rose-950/40 border-rose-500/40'
                       } space-y-3`}
@@ -1138,16 +1373,21 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                             <span className="font-mono font-black text-xs px-2.5 py-0.5 rounded-lg bg-white/10 text-white">
                               Câu {idx + 1}
                             </span>
-                            {isCorrect ? (
-                              <span className="text-[11px] font-bold text-emerald-300 flex items-center gap-1">
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Đúng (+1.0 đ)
-                              </span>
-                            ) : (
-                              <span className="text-[11px] font-bold text-rose-300 flex items-center gap-1">
-                                <XCircle className="w-3.5 h-3.5 text-rose-400" />
-                                {isUnanswered ? 'Chưa trả lời (0.0 đ)' : 'Sai (0.0 đ)'}
-                              </span>
-                            )}
+                            <span className="text-[10px] font-mono font-bold bg-white/15 px-2 py-0.5 rounded-md text-amber-300">
+                              {q.partType === 'part2_true_false'
+                                ? 'Phần II (Đúng/Sai)'
+                                : q.partType === 'part3_short_answer'
+                                ? 'Phần III (4 số)'
+                                : 'Phần I (Nhiều lựa chọn)'}
+                            </span>
+                            <span
+                              className={`text-[11px] font-bold flex items-center gap-1 ${
+                                isFullyCorrect ? 'text-emerald-300' : 'text-rose-300'
+                              }`}
+                            >
+                              {isFullyCorrect ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> : <XCircle className="w-3.5 h-3.5 text-rose-400" />}
+                              <span>{resultLabel}</span>
+                            </span>
                           </div>
                           <p className="font-bold text-sm text-slate-100">{q.content}</p>
                         </div>
@@ -1166,44 +1406,100 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                         </button>
                       </div>
 
-                      {/* 4 Options Grid */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                        {q.options.map((opt) => {
-                          const isChosen = studentChoice === opt.key;
-                          const isRightAnswer = q.correctAnswer === opt.key;
+                      {/* Part 1: Options Grid */}
+                      {(!q.partType || q.partType === 'part1_choice') && q.options && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                          {q.options.map((opt) => {
+                            const isChosen = studentChoice === opt.key;
+                            const isRightAnswer = q.correctAnswer === opt.key;
 
-                          let badgeStyle = 'bg-black/30 border-slate-700 text-slate-300';
-                          if (isRightAnswer) {
-                            badgeStyle = 'bg-emerald-900/80 border-emerald-400 text-emerald-100 font-bold';
-                          } else if (isChosen && !isRightAnswer) {
-                            badgeStyle = 'bg-rose-900/80 border-rose-400 text-rose-100 font-bold';
-                          }
+                            let badgeStyle = 'bg-black/30 border-slate-700 text-slate-300';
+                            if (isRightAnswer) {
+                              badgeStyle = 'bg-emerald-900/80 border-emerald-400 text-emerald-100 font-bold';
+                            } else if (isChosen && !isRightAnswer) {
+                              badgeStyle = 'bg-rose-900/80 border-rose-400 text-rose-100 font-bold';
+                            }
 
-                          return (
-                            <div
-                              key={opt.key}
-                              className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 ${badgeStyle}`}
-                            >
-                              <div className="flex items-center gap-2">
-                                <span className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center font-bold text-xs shrink-0">
-                                  {opt.key}
-                                </span>
-                                <span>{opt.text}</span>
+                            return (
+                              <div
+                                key={opt.key}
+                                className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 ${badgeStyle}`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center font-bold text-xs shrink-0">
+                                    {opt.key}
+                                  </span>
+                                  <span>{opt.text}</span>
+                                </div>
+                                {isRightAnswer && (
+                                  <span className="text-[10px] bg-emerald-400 text-emerald-950 px-2 py-0.5 rounded-md font-black shrink-0">
+                                    ✓ Đáp án đúng
+                                  </span>
+                                )}
+                                {isChosen && !isRightAnswer && (
+                                  <span className="text-[10px] bg-rose-400 text-rose-950 px-2 py-0.5 rounded-md font-black shrink-0">
+                                    ✗ Bạn chọn
+                                  </span>
+                                )}
                               </div>
-                              {isRightAnswer && (
-                                <span className="text-[10px] bg-emerald-400 text-emerald-950 px-2 py-0.5 rounded-md font-black shrink-0">
-                                  ✓ Đáp án đúng
-                                </span>
-                              )}
-                              {isChosen && !isRightAnswer && (
-                                <span className="text-[10px] bg-rose-400 text-rose-950 px-2 py-0.5 rounded-md font-black shrink-0">
-                                  ✗ Bạn chọn
-                                </span>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Part 2: Sub-items Review */}
+                      {q.partType === 'part2_true_false' && q.subItems && (
+                        <div className="space-y-2 text-xs">
+                          {q.subItems.map((si) => {
+                            const studentSubVal = studentChoice?.[si.key];
+                            const isSubCorrect = studentSubVal === si.isCorrect;
+
+                            return (
+                              <div
+                                key={si.key}
+                                className={`p-2.5 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 ${
+                                  isSubCorrect
+                                    ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-100'
+                                    : 'bg-rose-950/60 border-rose-500/50 text-rose-100'
+                                }`}
+                              >
+                                <div className="flex-1">
+                                  <span className="font-bold text-amber-300 mr-2">{si.key})</span>
+                                  <span>{si.content}</span>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <span className="text-[10px] bg-black/40 px-2 py-1 rounded-md text-slate-300 font-bold">
+                                    Bạn chọn: {studentSubVal === true ? 'ĐÚNG' : studentSubVal === false ? 'SAI' : 'Chưa chọn'}
+                                  </span>
+                                  <span className="text-[10px] bg-emerald-400 text-emerald-950 px-2 py-1 rounded-md font-black">
+                                    Đáp án chuẩn: {si.isCorrect ? 'ĐÚNG (Gạch chân)' : 'SAI'}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Part 3: Short Answer Review */}
+                      {q.partType === 'part3_short_answer' && (
+                        <div className="p-3 bg-black/40 rounded-xl border border-white/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+                          <div>
+                            <span className="text-slate-300">Bạn đã nhập: </span>
+                            <span className={`font-mono text-base font-black px-2 py-0.5 rounded ${
+                              isFullyCorrect ? 'bg-emerald-500/30 text-emerald-300' : 'bg-rose-500/30 text-rose-300'
+                            }`}>
+                              {studentChoice || '(Để trống)'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-slate-300">Đáp án 4 ký tự chuẩn:</span>
+                            <span className="font-mono text-base font-black bg-emerald-400 text-emerald-950 px-2.5 py-0.5 rounded-lg shadow-sm">
+                              {q.shortAnswerCorrect || q.correctAnswer || '1234'}
+                            </span>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Static explanation if available */}
                       {q.explanation && (
@@ -1391,8 +1687,8 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                         {wrongQuestions.map((q) => {
                           const originalIdx = questions.findIndex((item) => item.id === q.id);
                           const studentAnswerKey = finalSubmission.answers[q.id];
-                          const studentChoiceObj = q.options.find((opt) => opt.key === studentAnswerKey);
-                          const correctChoiceObj = q.options.find((opt) => opt.key === q.correctAnswer);
+                          const studentChoiceObj = q.options?.find((opt) => opt.key === studentAnswerKey);
+                          const correctChoiceObj = q.options?.find((opt) => opt.key === q.correctAnswer);
 
                           return (
                             <div
@@ -1405,8 +1701,11 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                                     <span className="font-mono font-black text-xs px-2.5 py-0.5 rounded-lg bg-white/10 text-rose-200 border border-rose-400/30">
                                       Câu {originalIdx + 1}
                                     </span>
+                                    <span className="text-[10px] font-mono font-bold bg-white/10 px-2 py-0.5 rounded text-amber-300">
+                                      {q.partType === 'part2_true_false' ? 'Phần II' : q.partType === 'part3_short_answer' ? 'Phần III' : 'Phần I'}
+                                    </span>
                                     <span className="text-[11px] font-bold text-rose-400">
-                                      Trả lời sai
+                                      Chưa hoàn thiện đúng
                                     </span>
                                   </div>
                                   <p className="font-bold text-sm text-slate-100">{q.content}</p>
@@ -1436,7 +1735,11 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                                       Bạn đã chọn:
                                     </span>
                                     <span className="font-bold text-rose-100">
-                                      {studentAnswerKey}. {studentChoiceObj?.text || 'Không xác định'}
+                                      {typeof studentAnswerKey === 'object'
+                                        ? JSON.stringify(studentAnswerKey)
+                                        : studentAnswerKey
+                                        ? `${studentAnswerKey}. ${studentChoiceObj?.text || ''}`
+                                        : 'Chưa trả lời'}
                                     </span>
                                   </div>
                                 </div>
@@ -1447,10 +1750,14 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                                   </span>
                                   <div>
                                     <span className="text-[10px] font-black uppercase text-emerald-300 block">
-                                      Đáp án đúng:
+                                      Đáp án chuẩn:
                                     </span>
                                     <span className="font-bold text-emerald-100">
-                                      {q.correctAnswer}. {correctChoiceObj?.text || 'Không xác định'}
+                                      {q.partType === 'part2_true_false'
+                                        ? (q.correctAnswer || 'Xem chi tiết từng ý')
+                                        : q.partType === 'part3_short_answer'
+                                        ? `Đáp án 4 số: ${q.shortAnswerCorrect || q.correctAnswer || '1234'}`
+                                        : `${q.correctAnswer}. ${correctChoiceObj?.text || ''}`}
                                     </span>
                                   </div>
                                 </div>
@@ -1479,7 +1786,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                       <div className="space-y-3">
                         {unansweredQuestions.map((q) => {
                           const originalIdx = questions.findIndex((item) => item.id === q.id);
-                          const correctChoiceObj = q.options.find((opt) => opt.key === q.correctAnswer);
+                          const correctChoiceObj = q.options?.find((opt) => opt.key === q.correctAnswer);
                           return (
                             <div
                               key={q.id}
@@ -1494,7 +1801,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                                 </span>
                               </div>
                               <div className="p-2 bg-emerald-950/60 rounded-lg text-emerald-200 border border-emerald-500/30">
-                                <strong>Đáp án đúng:</strong> {q.correctAnswer}. {correctChoiceObj?.text}
+                                <strong>Đáp án đúng:</strong> {q.partType === 'part2_true_false' ? (q.correctAnswer || 'Xem chi tiết') : q.partType === 'part3_short_answer' ? (q.shortAnswerCorrect || '1234') : `${q.correctAnswer}. ${correctChoiceObj?.text || ''}`}
                               </div>
                             </div>
                           );

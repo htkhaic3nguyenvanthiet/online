@@ -176,20 +176,49 @@ export const EditQuizModal: React.FC<EditQuizModalProps> = ({
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 text-[11px]">
-                    {q.options.map((opt) => (
-                      <div
-                        key={opt.key}
-                        className={`p-2 rounded-xl border ${
-                          opt.key === q.correctAnswer
-                            ? 'bg-emerald-50 border-emerald-300 text-emerald-900 font-bold'
-                            : 'bg-slate-50 border-slate-200 text-slate-700'
-                        }`}
-                      >
-                        <span className="font-mono font-bold mr-1">{opt.key}.</span> {opt.text}
-                      </div>
-                    ))}
-                  </div>
+                  {q.partType === 'part2_true_false' && q.subItems && (
+                    <div className="space-y-1.5 text-[11px]">
+                      {q.subItems.map((si) => (
+                        <div
+                          key={si.key}
+                          className={`p-2 rounded-xl border flex items-center justify-between ${
+                            si.isCorrect
+                              ? 'bg-emerald-50 border-emerald-300 text-emerald-900 font-bold'
+                              : 'bg-slate-50 border-slate-200 text-slate-700'
+                          }`}
+                        >
+                          <span><strong className="mr-1">{si.key})</strong> {si.content}</span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white border border-slate-200">
+                            {si.isCorrect ? 'ĐÚNG (Gạch chân)' : 'SAI'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {q.partType === 'part3_short_answer' && (
+                    <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-xl text-xs flex items-center justify-between">
+                      <span className="text-blue-900">Đáp án 4 ký tự: <strong className="font-mono text-sm">{q.shortAnswerCorrect || q.correctAnswer || '1234'}</strong></span>
+                      <span className="text-[10px] bg-blue-200 text-blue-900 font-bold px-2 py-0.5 rounded">Mặc định A.1234</span>
+                    </div>
+                  )}
+
+                  {(!q.partType || q.partType === 'part1_choice') && q.options && (
+                    <div className="grid grid-cols-2 gap-2 text-[11px]">
+                      {q.options.map((opt) => (
+                        <div
+                          key={opt.key}
+                          className={`p-2 rounded-xl border ${
+                            opt.key === q.correctAnswer
+                              ? 'bg-emerald-50 border-emerald-300 text-emerald-900 font-bold'
+                              : 'bg-slate-50 border-slate-200 text-slate-700'
+                          }`}
+                        >
+                          <span className="font-mono font-bold mr-1">{opt.key}.</span> {opt.text}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

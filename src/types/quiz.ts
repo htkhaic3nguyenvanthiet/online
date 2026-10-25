@@ -1,15 +1,29 @@
 export type OptionKey = 'A' | 'B' | 'C' | 'D';
 
+export type PartType = 'part1_choice' | 'part2_true_false' | 'part3_short_answer';
+
+export interface SubQuestionItem {
+  key: 'a' | 'b' | 'c' | 'd';
+  content: string;
+  isCorrect: boolean; // true = Đúng, false = Sai
+}
+
 export interface Question {
   id: string;
   order: number;
   content: string;
-  options: {
+  partType?: PartType;
+  // Phần I: 4 lựa chọn A, B, C, D
+  options?: {
     key: OptionKey;
     text: string;
     isCorrect?: boolean;
   }[];
-  correctAnswer: OptionKey;
+  correctAnswer?: OptionKey | string;
+  // Phần II: 4 ý Đúng/Sai a), b), c), d)
+  subItems?: SubQuestionItem[];
+  // Phần III: Trả lời ngắn tối đa 4 ký tự (ví dụ A.1234 -> '1234')
+  shortAnswerCorrect?: string;
   explanation?: string;
   points: number;
 }
@@ -99,7 +113,7 @@ export interface StudentSubmission {
   submittedAt: string;
   durationSeconds: number;
   streakMax: number;
-  answers: Record<string, OptionKey>;
+  answers: Record<string, any>;
   autoGraded: boolean;
   tabSwitchCount?: number;
   cheatLogs?: CheatLog[];

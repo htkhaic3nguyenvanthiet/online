@@ -4,6 +4,7 @@ export const sampleQuestions: Question[] = [
   {
     id: 'q1',
     order: 1,
+    partType: 'part1_choice',
     content: 'Nội dung nào sau đây đúng khi nói về phương thức trồng rừng bằng gieo hạt?',
     options: [
       { key: 'A', text: 'Hạt giống cần có phẩm chất tốt hơn so với hạt gieo trong vườn ươm.', isCorrect: true },
@@ -13,11 +14,12 @@ export const sampleQuestions: Question[] = [
     ],
     correctAnswer: 'A',
     explanation: 'Gieo hạt trực tiếp tại thực địa đòi hỏi hạt giống phải có độ thuần cao, sức nảy mầm mạnh mẽ để vượt qua điều kiện khắc nghiệt của tự nhiên.',
-    points: 1
+    points: 0.25
   },
   {
     id: 'q2',
     order: 2,
+    partType: 'part1_choice',
     content: 'Phương pháp nhân giống vô tính nào cho phép nhân nhanh hàng loạt cây giống sạch bệnh trong thời gian ngắn nhất?',
     options: [
       { key: 'A', text: 'Chiết cành truyền thống lâu năm.', isCorrect: false },
@@ -27,25 +29,12 @@ export const sampleQuestions: Question[] = [
     ],
     correctAnswer: 'B',
     explanation: 'Nuôi cấy mô trong điều kiện vô trùng tạo ra hàng vạn cây giống sạch bệnh, đồng nhất về mặt di truyền trong không gian hẹp.',
-    points: 1
+    points: 0.25
   },
   {
     id: 'q3',
     order: 3,
-    content: 'Mục đích chủ yếu của việc bón phân lót trước khi gieo trồng là gì?',
-    options: [
-      { key: 'A', text: 'Kích thích quả chín nhanh và mọng nước hơn.', isCorrect: false },
-      { key: 'B', text: 'Cung cấp dinh dưỡng kịp thời khi bộ rễ non của cây mới bén đất.', isCorrect: true },
-      { key: 'C', text: 'Làm rụng bớt lá vàng thừa trong mùa mưa.', isCorrect: false },
-      { key: 'D', text: 'Tạo màu sắc đẹp cho hoa khi chuẩn bị thu hoạch.', isCorrect: false }
-    ],
-    correctAnswer: 'B',
-    explanation: 'Bón lót giúp phân giải dinh dưỡng sẵn sàng trong tầng đất canh tác cho rễ cây non hấp thụ ngay sau khi nảy mầm.',
-    points: 1
-  },
-  {
-    id: 'q4',
-    order: 4,
+    partType: 'part1_choice',
     content: 'Biện pháp kỹ thuật nào sau đây thuộc nguyên lý nông nghiệp công nghệ cao thân thiện với môi trường?',
     options: [
       { key: 'A', text: 'Hệ thống tưới nhỏ giọt tự động kết hợp châm phân định lượng.', isCorrect: true },
@@ -55,35 +44,58 @@ export const sampleQuestions: Question[] = [
     ],
     correctAnswer: 'A',
     explanation: 'Tưới nhỏ giọt tiết kiệm đến 50-70% nước tưới và đưa phân bón chính xác đến rễ, giảm thất thoát rửa trôi ô nhiễm đất nguồn nước.',
-    points: 1
+    points: 0.25
+  },
+  {
+    id: 'q4',
+    order: 4,
+    partType: 'part2_true_false',
+    content: 'Khi nghiên cứu về đặc điểm của đất phèn, đất mặn và các giải pháp cải tạo đất trồng tại vùng Đồng bằng sông Cửu Long:',
+    subItems: [
+      {
+        key: 'a',
+        content: 'Biện pháp bón vôi nông nghiệp có tác dụng khử chua, nâng độ pH cho đất phèn.',
+        isCorrect: true // Gạch chân a) trong đề Word -> ĐÚNG
+      },
+      {
+        key: 'b',
+        content: 'Thau chua rửa mặn bằng nguồn nước ngọt dồi dào từ sông Tiền và sông Hậu trong mùa lũ là giải pháp sinh thái bền vững.',
+        isCorrect: true // Gạch chân b) trong đề Word -> ĐÚNG
+      },
+      {
+        key: 'c',
+        content: 'Nên cày lật sâu tầng đất chứa hợp chất pyrit sinh phèn lên mặt ruộng để phơi ải trong mùa khô.',
+        isCorrect: false // Không gạch chân -> SAI
+      },
+      {
+        key: 'd',
+        content: 'Đất phèn hoàn toàn không thể canh tác bất kỳ loại cây trồng nào kể cả cây tràm và cây khóm.',
+        isCorrect: false // Không gạch chân -> SAI
+      }
+    ],
+    correctAnswer: 'a:Đ b:Đ c:S d:S',
+    explanation: 'Ý a, b là đúng (được gạch chân trong file Word). Ý c sai vì cày lật sâu tầng pyrit sẽ làm phèn oxy hóa bốc lên mặt đất. Ý d sai vì cây tràm, khóm thích nghi tốt trên đất phèn.',
+    points: 1.0
   },
   {
     id: 'q5',
     order: 5,
-    content: 'Đất phù sa bồi tụ ở đồng bằng sông Cửu Long thích hợp nhất với nhóm cây trồng nào dưới đây?',
-    options: [
-      { key: 'A', text: 'Cây lúa nước và cây ăn trái nhiệt đới.', isCorrect: true },
-      { key: 'B', text: 'Cây thông ba lá và cây chè tuyết shan vùng lạnh.', isCorrect: false },
-      { key: 'C', text: 'Cây cao su trên vùng đồi dốc cằn cỗi.', isCorrect: false },
-      { key: 'D', text: 'Cây chịu hạn sa mạc như xương rồng gai.', isCorrect: false }
-    ],
-    correctAnswer: 'A',
-    explanation: 'Đất phù sa ngọt ven sông Tiền, sông Hậu rất giàu mùn dinh dưỡng, giữ nước tốt, cực kỳ lý tưởng cho lúa và cây ăn quả.',
-    points: 1
+    partType: 'part3_short_answer',
+    content: 'Một nông trại ứng dụng hệ thống châm phân tự động gồm 4 bồn chứa dinh dưỡng đa lượng và vi lượng. Hãy nhập mã hiệu kỹ thuật gồm 4 ký tự số mặc định (A.1234) để kích hoạt van an toàn điện tử:',
+    shortAnswerCorrect: '1234',
+    correctAnswer: '1234',
+    explanation: 'Mã số kỹ thuật 4 ký tự mặc định là 1234 theo quy chuẩn Thông tư 7991.',
+    points: 0.25
   },
   {
     id: 'q6',
     order: 6,
-    content: 'Tại sao cần luân canh cây trồng họ Đậu (như đậu tương, đậu phộng) với cây lúa nước hoặc ngô?',
-    options: [
-      { key: 'A', text: 'Vì nốt sần rễ cây họ Đậu chứa vi khuẩn Rhizobium cố định đạm tự nhiên.', isCorrect: true },
-      { key: 'B', text: 'Vì cây họ Đậu không cần nước để quang hợp.', isCorrect: false },
-      { key: 'C', text: 'Để loại bỏ hoàn toàn ánh sáng mặt trời trên ruộng.', isCorrect: false },
-      { key: 'D', text: 'Vì cây họ Đậu thu hút chim sâu về diệt hết cỏ dại.', isCorrect: false }
-    ],
-    correctAnswer: 'A',
-    explanation: 'Cây họ Đậu có vi khuẩn cộng sinh cố định đạm từ khí trời vào đất, giúp cải tạo độ phì nhiêu màu mỡ tự nhiên.',
-    points: 1
+    partType: 'part3_short_answer',
+    content: 'Trong công thức phối trộn phân NPK tỷ lệ 16-16-8 cho vườn bưởi da xanh giai đoạn nuôi trái, hãy nhập 4 chữ số biểu thị số lượng kilogram phân kali cần bón cho 10 hecta đất canh tác:',
+    shortAnswerCorrect: '2400',
+    correctAnswer: '2400',
+    explanation: 'Đáp án số chuẩn 4 ký tự: 2400 kg.',
+    points: 0.25
   }
 ];
 
