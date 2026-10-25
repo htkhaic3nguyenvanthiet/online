@@ -78,6 +78,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
   const [disqualificationReason, setDisqualificationReason] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showSubmitConfirmModal, setShowSubmitConfirmModal] = useState(false);
+  const [showCompletionSummaryModal, setShowCompletionSummaryModal] = useState(false);
 
   // Post-exam Review & AI Tutor state (STRICTLY post-exam only)
   const [showReviewMode, setShowReviewMode] = useState(false);
@@ -338,6 +339,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
     setFinalSubmission(sub);
     setShowSubmitConfirmModal(false);
     setShowViolationModal(false);
+    setShowCompletionSummaryModal(true);
     setStep('result');
 
     if (onResultSubmitted) {
@@ -386,6 +388,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
     setDisqualificationReason(null);
     setSecondsRemaining(resolvedDurationMinutes * 60);
     setShowReviewMode(false);
+    setShowCompletionSummaryModal(false);
     setFinalSubmission(null);
     setStep('landing');
   };
@@ -1049,6 +1052,17 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
             <button
               onClick={() => {
                 soundEffects.playClick();
+                setShowCompletionSummaryModal(true);
+              }}
+              className="btn-3d btn-3d-amber px-5 py-3 text-xs rounded-xl font-black flex items-center gap-2 cursor-pointer shadow-lg text-amber-950"
+            >
+              <Award className="w-4 h-4 text-amber-900" />
+              <span>📊 Bảng Tổng Kết Tức Thì</span>
+            </button>
+
+            <button
+              onClick={() => {
+                soundEffects.playClick();
                 setShowReviewMode(!showReviewMode);
               }}
               className="btn-3d btn-3d-blue px-5 py-3 text-xs rounded-xl font-black flex items-center gap-2 cursor-pointer shadow-lg"
@@ -1205,9 +1219,329 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
           )}
         </div>
 
+        {/* Post-Submission Instant Summary Modal */}
+        {showCompletionSummaryModal && finalSubmission && (() => {
+          const correctQuestions = questions.filter(
+            (q) => finalSubmission.answers[q.id] === q.correctAnswer
+          );
+          const wrongQuestions = questions.filter(
+            (q) => finalSubmission.answers[q.id] && finalSubmission.answers[q.id] !== q.correctAnswer
+          );
+          const unansweredQuestions = questions.filter(
+            (q) => !finalSubmission.answers[q.id]
+          );
+
+          return (
+            <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 overflow-y-auto animate-in fade-in duration-200">
+              <div className="bg-[#1c1228] border-2 border-indigo-500/60 rounded-3xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl text-white overflow-hidden my-auto animate-in zoom-in-95 duration-200">
+                {/* Modal Header */}
+                <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-700 px-6 py-5 flex items-center justify-between border-b border-indigo-400/30 shrink-0">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-amber-300 shadow-inner">
+                      <Award className="w-6 h-6 stroke-[2.5]" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-lg sm:text-xl font-black text-white">
+                          Tổng Kết Kết Quả Bài Làm
+                        </h3>
+                        <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-white/20 text-white border border-white/30">
+                          Đã Nộp Bài
+                        </span>
+                      </div>
+                      <p className="text-xs text-emerald-100/90 font-medium">
+                        Học sinh: <strong className="text-white">{studentName}</strong> ({studentInfo}) • Đề thi: {resolvedTitle}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      soundEffects.playClick();
+                      setShowCompletionSummaryModal(false);
+                    }}
+                    className="w-9 h-9 rounded-xl bg-black/20 hover:bg-black/40 text-white/80 hover:text-white flex items-center justify-center transition-colors cursor-pointer text-base font-bold"
+                    title="Đóng bảng tổng kết"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Modal Scrollable Body */}
+                <div className="p-5 sm:p-6 space-y-6 overflow-y-auto flex-1 text-slate-100">
+                  {/* Score & Key Metrics Banner */}
+                  <div className="bg-[#2a1b3d] border border-indigo-500/30 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-5 shadow-lg">
+                    {/* Big Score Block */}
+                    <div className="flex items-center gap-4 text-center sm:text-left">
+                      <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-700 p-1 flex flex-col items-center justify-center shadow-lg border border-emerald-300/40 shrink-0">
+                        <span className="text-[10px] font-black uppercase text-emerald-100 tracking-wider">Tổng Điểm</span>
+                        <span className="text-3xl font-black text-white font-mono leading-none my-0.5">
+                          {score}
+                        </span>
+                        <span className="text-[9px] text-emerald-200">thang 10</span>
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`text-xs font-black uppercase px-2.5 py-0.5 rounded-full border ${gradeColor}`}>
+                            {gradeLabel}
+                          </span>
+                          <span className="text-xs text-indigo-200 font-bold">
+                            Tỉ lệ đúng: {Math.round((correctCount / questions.length) * 100)}%
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-300">
+                          Thời gian làm bài: <strong className="text-amber-300">{Math.floor(finalSubmission.durationSeconds / 60)} phút {finalSubmission.durationSeconds % 60} giây</strong>
+                        </p>
+                        <p className="text-[11px] text-slate-400">
+                          {finalSubmission.tabSwitchCount && finalSubmission.tabSwitchCount > 0
+                            ? `Cảnh báo: Phát hiện ${finalSubmission.tabSwitchCount} lần đổi tab`
+                            : 'Đảm bảo nghiêm túc: 0 vi phạm tab'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Quick Metric Chips */}
+                    <div className="grid grid-cols-3 gap-2 w-full sm:w-auto">
+                      <div className="bg-emerald-950/60 border border-emerald-500/40 rounded-xl px-3 py-2 text-center min-w-[90px]">
+                        <span className="text-[10px] font-bold text-emerald-300 block">Số câu đúng</span>
+                        <span className="text-xl font-black text-emerald-400 font-mono">
+                          {correctCount}
+                        </span>
+                        <span className="text-[9px] text-emerald-300/70 block">/ {questions.length}</span>
+                      </div>
+
+                      <div className="bg-rose-950/60 border border-rose-500/40 rounded-xl px-3 py-2 text-center min-w-[90px]">
+                        <span className="text-[10px] font-bold text-rose-300 block">Số câu sai</span>
+                        <span className="text-xl font-black text-rose-400 font-mono">
+                          {wrongCount}
+                        </span>
+                        <span className="text-[9px] text-rose-300/70 block">câu</span>
+                      </div>
+
+                      <div className="bg-amber-950/60 border border-amber-500/40 rounded-xl px-3 py-2 text-center min-w-[90px]">
+                        <span className="text-[10px] font-bold text-amber-300 block">Chưa làm</span>
+                        <span className="text-xl font-black text-amber-400 font-mono">
+                          {unansweredCount}
+                        </span>
+                        <span className="text-[9px] text-amber-300/70 block">câu</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section 1: Correctly Answered Questions */}
+                  <div className="bg-[#241734] border border-emerald-500/30 rounded-2xl p-4 sm:p-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-black text-emerald-300 flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                        <span>Danh Sách Câu Đã Làm Đúng ({correctCount}/{questions.length})</span>
+                      </h4>
+                      <span className="text-[11px] text-emerald-400/80 font-semibold">
+                        +{ (correctCount * (10 / questions.length)).toFixed(1) } điểm
+                      </span>
+                    </div>
+
+                    {correctQuestions.length === 0 ? (
+                      <p className="text-xs text-slate-400 italic">Bạn chưa làm đúng câu nào trong lượt thi này.</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {questions.map((q, idx) => {
+                          const isCorrect = finalSubmission.answers[q.id] === q.correctAnswer;
+                          if (!isCorrect) return null;
+                          return (
+                            <div
+                              key={q.id}
+                              className="px-3 py-1.5 rounded-xl bg-emerald-900/60 border border-emerald-400/50 flex items-center gap-1.5 text-xs text-emerald-100 font-bold shadow-xs hover:bg-emerald-900 transition-colors"
+                              title={`Câu ${idx + 1}: ${q.content}`}
+                            >
+                              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                              <span>Câu {idx + 1}</span>
+                              <span className="text-[10px] bg-emerald-400 text-emerald-950 px-1 rounded font-black">
+                                {q.correctAnswer}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Section 2: Detailed Breakdown of Wrong Answers */}
+                  <div className="bg-[#241734] border border-rose-500/30 rounded-2xl p-4 sm:p-5 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-black text-rose-300 flex items-center gap-2">
+                        <XCircle className="w-4 h-4 text-rose-400" />
+                        <span>Phân Tích Chi Tiết Các Câu Làm Sai ({wrongQuestions.length} câu)</span>
+                      </h4>
+                      <span className="text-[11px] text-rose-400/80 font-semibold">
+                        Xem kỹ đáp án và ôn lại ngay
+                      </span>
+                    </div>
+
+                    {wrongQuestions.length === 0 ? (
+                      <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-center space-y-1">
+                        <p className="text-xs font-bold text-emerald-300 flex items-center justify-center gap-1.5">
+                          <Sparkles className="w-4 h-4 text-amber-300" />
+                          Xuất sắc! Bạn không có bất kỳ câu trả lời sai nào!
+                        </p>
+                        <p className="text-[11px] text-emerald-200/70">
+                          Tất cả các câu đã trả lời đều chính xác. Hãy tiếp tục phát huy!
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {wrongQuestions.map((q) => {
+                          const originalIdx = questions.findIndex((item) => item.id === q.id);
+                          const studentAnswerKey = finalSubmission.answers[q.id];
+                          const studentChoiceObj = q.options.find((opt) => opt.key === studentAnswerKey);
+                          const correctChoiceObj = q.options.find((opt) => opt.key === q.correctAnswer);
+
+                          return (
+                            <div
+                              key={q.id}
+                              className="p-4 rounded-2xl bg-rose-950/30 border border-rose-500/40 space-y-3"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-mono font-black text-xs px-2.5 py-0.5 rounded-lg bg-white/10 text-rose-200 border border-rose-400/30">
+                                      Câu {originalIdx + 1}
+                                    </span>
+                                    <span className="text-[11px] font-bold text-rose-400">
+                                      Trả lời sai
+                                    </span>
+                                  </div>
+                                  <p className="font-bold text-sm text-slate-100">{q.content}</p>
+                                </div>
+
+                                <button
+                                  onClick={() => handleAskAITutorPostExam(q)}
+                                  disabled={isAiExplaining && aiExplainedQuestionId === q.id}
+                                  className="btn-3d btn-3d-amber px-3 py-1.5 text-xs rounded-xl font-bold flex items-center gap-1.5 cursor-pointer text-amber-950 shrink-0 shadow-md"
+                                  title="Nhận giải thích từ AI Gemini 3.8 Flash"
+                                >
+                                  <Bot className="w-3.5 h-3.5 text-amber-900" />
+                                  <span>
+                                    {isAiExplaining && aiExplainedQuestionId === q.id ? 'AI đang viết...' : 'AI giải thích'}
+                                  </span>
+                                </button>
+                              </div>
+
+                              {/* Student vs Correct comparison */}
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                                <div className="p-2.5 rounded-xl bg-rose-900/60 border border-rose-400/50 flex items-start gap-2">
+                                  <span className="w-5 h-5 rounded-full bg-rose-500 text-white flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
+                                    ✕
+                                  </span>
+                                  <div>
+                                    <span className="text-[10px] font-black uppercase text-rose-300 block">
+                                      Bạn đã chọn:
+                                    </span>
+                                    <span className="font-bold text-rose-100">
+                                      {studentAnswerKey}. {studentChoiceObj?.text || 'Không xác định'}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="p-2.5 rounded-xl bg-emerald-900/60 border border-emerald-400/50 flex items-start gap-2">
+                                  <span className="w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
+                                    ✓
+                                  </span>
+                                  <div>
+                                    <span className="text-[10px] font-black uppercase text-emerald-300 block">
+                                      Đáp án đúng:
+                                    </span>
+                                    <span className="font-bold text-emerald-100">
+                                      {q.correctAnswer}. {correctChoiceObj?.text || 'Không xác định'}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Quick Explanation */}
+                              {q.explanation && (
+                                <div className="p-2.5 bg-black/40 rounded-xl text-[11px] text-slate-300 border border-white/10">
+                                  <span className="font-bold text-teal-300">Lời giải chi tiết:</span> {q.explanation}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Section 3: Unanswered Questions (if any) */}
+                  {unansweredQuestions.length > 0 && (
+                    <div className="bg-[#241734] border border-amber-500/30 rounded-2xl p-4 sm:p-5 space-y-3">
+                      <h4 className="text-sm font-black text-amber-300 flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-amber-400" />
+                        <span>Các Câu Bị Bỏ Qua / Chưa Trả Lời ({unansweredQuestions.length} câu)</span>
+                      </h4>
+                      <div className="space-y-3">
+                        {unansweredQuestions.map((q) => {
+                          const originalIdx = questions.findIndex((item) => item.id === q.id);
+                          const correctChoiceObj = q.options.find((opt) => opt.key === q.correctAnswer);
+                          return (
+                            <div
+                              key={q.id}
+                              className="p-3.5 rounded-xl bg-amber-950/30 border border-amber-500/40 text-xs space-y-2"
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-amber-200">
+                                  Câu {originalIdx + 1}: {q.content}
+                                </span>
+                                <span className="text-[10px] bg-amber-400 text-amber-950 px-2 py-0.5 rounded font-bold">
+                                  Chưa chọn đáp án
+                                </span>
+                              </div>
+                              <div className="p-2 bg-emerald-950/60 rounded-lg text-emerald-200 border border-emerald-500/30">
+                                <strong>Đáp án đúng:</strong> {q.correctAnswer}. {correctChoiceObj?.text}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Modal Action Buttons Footer */}
+                <div className="bg-[#170e22] px-6 py-4 border-t border-indigo-500/30 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                  <div className="text-xs text-slate-400">
+                    Lượt làm: <strong className="text-white">{completedAttemptsCount}</strong> / {resolvedAllowedAttempts === 0 ? 'Không giới hạn' : resolvedAllowedAttempts}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <button
+                      onClick={() => {
+                        soundEffects.playClick();
+                        setShowCompletionSummaryModal(false);
+                        setShowReviewMode(true);
+                      }}
+                      className="btn-3d btn-3d-blue px-4 py-2.5 text-xs rounded-xl font-bold flex items-center gap-1.5 cursor-pointer shadow-md"
+                    >
+                      <Eye className="w-4 h-4" />
+                      <span>Xem Lại Toàn Bộ Đề & Lời Giải</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        soundEffects.playClick();
+                        setShowCompletionSummaryModal(false);
+                      }}
+                      className="btn-3d btn-3d-teal px-4 py-2.5 text-xs rounded-xl font-bold cursor-pointer"
+                    >
+                      Đóng Bảng Tổng Kết
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* AI Tutor Explanation Modal (Post-Exam) */}
         {aiExplanationText && (
-          <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-60 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-4">
             <div className="bg-white rounded-3xl max-w-xl w-full text-slate-800 shadow-2xl border border-slate-100 overflow-hidden p-6 space-y-4 animate-in zoom-in-95">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div className="flex items-center gap-2 text-teal-800 font-extrabold text-sm">
