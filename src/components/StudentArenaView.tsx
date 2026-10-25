@@ -482,17 +482,17 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
      ========================================================================= */
   if (step === 'landing') {
     return (
-      <div className="min-h-[84vh] bg-gradient-to-b from-[#251838] via-[#1a1226] to-[#0f0917] rounded-3xl p-6 sm:p-10 flex items-center justify-center relative overflow-hidden shadow-2xl">
-        <div className="absolute top-10 left-12 text-pink-300/10 text-4xl select-none">★</div>
-        <div className="absolute bottom-16 right-16 text-pink-400/15 text-5xl select-none">★</div>
+      <div className="min-h-[84vh] bg-gradient-to-b from-[#0a2e33] via-[#07252a] to-[#04181b] rounded-3xl p-6 sm:p-10 flex items-center justify-center relative overflow-hidden shadow-2xl border border-teal-500/20">
+        <div className="absolute top-10 left-12 text-teal-300/10 text-4xl select-none">★</div>
+        <div className="absolute bottom-16 right-16 text-emerald-400/15 text-5xl select-none">★</div>
 
-        <div className="w-full max-w-2xl bg-[#332247]/95 border-2 border-pink-500/40 rounded-3xl p-6 sm:p-8 text-center text-white shadow-2xl backdrop-blur-md relative z-10 space-y-6">
+        <div className="w-full max-w-2xl bg-[#0b383f]/95 border-2 border-teal-400/40 rounded-3xl p-6 sm:p-8 text-center text-white shadow-2xl backdrop-blur-md relative z-10 space-y-6">
           {/* Header Badges */}
           <div className="flex flex-wrap items-center justify-center gap-2">
-            <span className="bg-white/10 text-pink-200 text-xs font-bold tracking-wider px-3.5 py-1 rounded-full uppercase">
+            <span className="bg-white/10 text-teal-200 text-xs font-bold tracking-wider px-3.5 py-1 rounded-full uppercase">
               Hệ Thống Khảo Sát Trực Tuyến
             </span>
-            <span className="bg-rose-500/90 text-white text-xs font-bold px-3 py-1 rounded-full uppercase">
+            <span className="bg-teal-700/90 text-white text-xs font-bold px-3 py-1 rounded-full uppercase">
               Công nghệ 12 • THPT Mang Thít
             </span>
             <span className="bg-emerald-500/80 text-white text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1">
@@ -505,41 +505,41 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
             <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-white mb-2">
               {resolvedTitle}
             </h1>
-            <p className="text-pink-200/80 text-xs sm:text-sm font-medium">
-              Giáo viên giao đề: <span className="font-bold text-pink-300">Thầy Hồ Tấn Khải</span> • Trường THPT Mang Thít
+            <p className="text-teal-200/80 text-xs sm:text-sm font-medium">
+              Giáo viên giao đề: <span className="font-bold text-teal-300">Thầy Hồ Tấn Khải</span> • Trường THPT Mang Thít
             </p>
           </div>
 
           {/* Detailed Assignment Specification Grid (Thời gian, Hạn làm, Số lượt) */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-left">
             {/* Thời gian */}
-            <div className="bg-[#211631]/90 border border-pink-400/20 rounded-2xl p-3 flex flex-col justify-between">
-              <span className="text-[11px] text-pink-200/70 font-semibold flex items-center gap-1">
-                <Clock className="w-3.5 h-3.5 text-pink-400" /> Thời gian làm
+            <div className="bg-[#06262b]/90 border border-teal-400/20 rounded-2xl p-3 flex flex-col justify-between">
+              <span className="text-[11px] text-teal-200/80 font-semibold flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5 text-teal-400" /> Thời gian làm
               </span>
               <span className="text-lg font-black text-white font-mono mt-1">
-                {resolvedDurationMinutes}&apos; <span className="text-xs font-normal text-pink-300">(Phút)</span>
+                {resolvedDurationMinutes}&apos; <span className="text-xs font-normal text-teal-300">(Phút)</span>
               </span>
             </div>
 
             {/* Số lượt làm bài */}
-            <div className="bg-[#211631]/90 border border-pink-400/20 rounded-2xl p-3 flex flex-col justify-between">
-              <span className="text-[11px] text-pink-200/70 font-semibold flex items-center gap-1">
+            <div className="bg-[#06262b]/90 border border-teal-400/20 rounded-2xl p-3 flex flex-col justify-between">
+              <span className="text-[11px] text-teal-200/80 font-semibold flex items-center gap-1">
                 <RotateCcw className="w-3.5 h-3.5 text-amber-400" /> Số lượt thi
               </span>
               <div className="mt-1">
                 <span className="text-base font-extrabold text-white">
                   {resolvedAllowedAttempts === 0 ? 'Vô hạn' : `${resolvedAllowedAttempts} lượt`}
                 </span>
-                <div className="text-[10px] text-pink-300/80">
+                <div className="text-[10px] text-teal-300/80">
                   (Đã làm: <span className="font-bold text-amber-300">{completedAttemptsCount}</span>)
                 </div>
               </div>
             </div>
 
             {/* Thời hạn làm bài */}
-            <div className="bg-[#211631]/90 border border-pink-400/20 rounded-2xl p-3 flex flex-col justify-between col-span-2 sm:col-span-1">
-              <span className="text-[11px] text-pink-200/70 font-semibold flex items-center gap-1">
+            <div className="bg-[#06262b]/90 border border-teal-400/20 rounded-2xl p-3 flex flex-col justify-between col-span-2 sm:col-span-1">
+              <span className="text-[11px] text-teal-200/80 font-semibold flex items-center gap-1">
                 <Clock className="w-3.5 h-3.5 text-emerald-400" /> Thời hạn nộp
               </span>
               <span className="text-xs font-bold text-emerald-300 leading-tight mt-1">
@@ -548,18 +548,18 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
             </div>
 
             {/* Số câu hỏi */}
-            <div className="bg-[#211631]/90 border border-pink-400/20 rounded-2xl p-3 flex flex-col justify-between col-span-2 sm:col-span-1">
-              <span className="text-[11px] text-pink-200/70 font-semibold flex items-center gap-1">
+            <div className="bg-[#06262b]/90 border border-teal-400/20 rounded-2xl p-3 flex flex-col justify-between col-span-2 sm:col-span-1">
+              <span className="text-[11px] text-teal-200/80 font-semibold flex items-center gap-1">
                 ≡ Số câu hỏi
               </span>
               <span className="text-lg font-black text-white font-mono mt-1">
-                {questions.length} <span className="text-xs font-normal text-pink-300">câu (10đ)</span>
+                {questions.length} <span className="text-xs font-normal text-teal-300">câu (10đ)</span>
               </span>
             </div>
           </div>
 
           {/* Strict Anti-Cheat & Proctoring Rules Banner */}
-          <div className="p-4 bg-slate-900/60 border border-amber-400/30 rounded-2xl text-left text-xs space-y-2 text-slate-200">
+          <div className="p-4 bg-[#051f23]/90 border border-amber-400/30 rounded-2xl text-left text-xs space-y-2 text-slate-200">
             <div className="font-black text-amber-300 flex items-center gap-2">
               <ShieldAlert className="w-4 h-4 text-amber-400" />
               <span>QUY CHẾ PHÒNG THI & CHỐNG GIAN LẬN (BẮT BUỘC):</span>
@@ -578,30 +578,30 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
           </div>
 
           {/* Student Identity Input Card */}
-          <div className="bg-[#211631]/95 border border-pink-400/30 rounded-2xl p-4 text-left space-y-3">
-            <div className="text-xs font-bold text-pink-200 uppercase tracking-wider flex items-center gap-1.5">
+          <div className="bg-[#06262b]/95 border border-teal-400/30 rounded-2xl p-4 text-left space-y-3">
+            <div className="text-xs font-bold text-teal-200 uppercase tracking-wider flex items-center gap-1.5">
               <span>👤 Thông tin học sinh làm bài thi:</span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div>
-                <label className="block text-slate-300 font-semibold mb-1">Họ và tên học sinh:</label>
+                <label className="block text-slate-200 font-semibold mb-1">Họ và tên học sinh:</label>
                 <input
                   type="text"
                   required
                   value={studentName}
                   onChange={(e) => setStudentName(e.target.value)}
                   placeholder="Nhập họ và tên học sinh..."
-                  className="w-full px-3.5 py-2.5 bg-white text-slate-900 font-bold rounded-xl border-2 border-pink-300 focus:outline-none focus:ring-2 focus:ring-pink-500 shadow-inner"
+                  className="w-full px-3.5 py-2.5 bg-white text-slate-900 font-bold rounded-xl border-2 border-teal-400/60 focus:outline-none focus:ring-2 focus:ring-teal-400 shadow-inner"
                 />
               </div>
               <div>
-                <label className="block text-slate-300 font-semibold mb-1">Lớp / Số báo danh:</label>
+                <label className="block text-slate-200 font-semibold mb-1">Lớp / Số báo danh:</label>
                 <input
                   type="text"
                   value={studentInfo}
                   onChange={(e) => setStudentInfo(e.target.value)}
                   placeholder="Ví dụ: 12A5 - SBD: 052"
-                  className="w-full px-3.5 py-2.5 bg-white text-slate-900 font-bold rounded-xl border-2 border-pink-300 focus:outline-none focus:ring-2 focus:ring-pink-500 shadow-inner"
+                  className="w-full px-3.5 py-2.5 bg-white text-slate-900 font-bold rounded-xl border-2 border-teal-400/60 focus:outline-none focus:ring-2 focus:ring-teal-400 shadow-inner"
                 />
               </div>
             </div>
@@ -622,7 +622,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                 soundEffects.playClick();
                 setStep('testing');
               }}
-              className="btn-3d btn-3d-pink w-full py-4 text-base rounded-2xl flex items-center justify-center gap-2 cursor-pointer font-black tracking-wide uppercase shadow-2xl"
+              className="btn-3d btn-3d-teal w-full py-4 text-base rounded-2xl flex items-center justify-center gap-2 cursor-pointer font-black tracking-wide uppercase shadow-2xl text-white"
             >
               <span>▶ Bắt đầu vào làm bài thi ngay (Lượt {attemptNumber})</span>
             </button>
@@ -637,41 +637,41 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
      ========================================================================= */
   if (step === 'info-modal') {
     return (
-      <div className="min-h-[84vh] bg-gradient-to-b from-[#251838] via-[#1a1226] to-[#0f0917] rounded-3xl p-6 sm:p-10 flex items-center justify-center relative">
-        <div className="w-full max-w-lg bg-[#37244f] border-2 border-pink-500/50 rounded-3xl p-6 sm:p-8 text-white shadow-2xl relative animate-in fade-in zoom-in-95 duration-150 space-y-5">
+      <div className="min-h-[84vh] bg-gradient-to-b from-[#0a2e33] via-[#07252a] to-[#04181b] rounded-3xl p-6 sm:p-10 flex items-center justify-center relative border border-teal-500/20">
+        <div className="w-full max-w-lg bg-[#0b383f] border-2 border-teal-400/50 rounded-3xl p-6 sm:p-8 text-white shadow-2xl relative animate-in fade-in zoom-in-95 duration-150 space-y-5">
           <div className="text-center">
             <h2 className="text-2xl font-black text-white">Xác nhận thông tin thí sinh</h2>
-            <p className="text-pink-200/80 text-xs mt-1">Thông tin sẽ ghi nhận vào biên bản nộp bài trực tuyến</p>
+            <p className="text-teal-200/80 text-xs mt-1">Thông tin sẽ ghi nhận vào biên bản nộp bài trực tuyến</p>
           </div>
 
           <div className="space-y-4 text-xs font-semibold">
             <div>
-              <label className="block text-pink-100 mb-1.5 font-bold">Họ và tên thí sinh:</label>
+              <label className="block text-teal-100 mb-1.5 font-bold">Họ và tên thí sinh:</label>
               <input
                 type="text"
                 required
                 value={studentName}
                 onChange={(e) => setStudentName(e.target.value)}
                 placeholder="Nhập họ và tên..."
-                className="w-full px-4 py-2.5 bg-white text-slate-800 rounded-2xl font-bold border-2 border-pink-300 focus:outline-none focus:border-pink-500 text-xs shadow-inner"
+                className="w-full px-4 py-2.5 bg-white text-slate-800 rounded-2xl font-bold border-2 border-teal-400/60 focus:outline-none focus:border-teal-300 text-xs shadow-inner"
               />
             </div>
 
             <div>
-              <label className="block text-pink-100 mb-1.5 font-bold">Lớp / Số báo danh:</label>
+              <label className="block text-teal-100 mb-1.5 font-bold">Lớp / Số báo danh:</label>
               <input
                 type="text"
                 required
                 value={studentInfo}
                 onChange={(e) => setStudentInfo(e.target.value)}
                 placeholder="Ví dụ: 12A5 - SBD: 052"
-                className="w-full px-4 py-2.5 bg-white text-slate-800 rounded-2xl font-bold border-2 border-pink-300 focus:outline-none focus:border-pink-500 text-xs shadow-inner"
+                className="w-full px-4 py-2.5 bg-white text-slate-800 rounded-2xl font-bold border-2 border-teal-400/60 focus:outline-none focus:border-teal-300 text-xs shadow-inner"
               />
             </div>
           </div>
 
-          <div className="p-3 bg-pink-950/50 border border-pink-500/30 rounded-xl text-[11px] text-pink-200 space-y-1">
-            <div className="font-bold text-pink-300">✦ Cam kết quy chế:</div>
+          <div className="p-3 bg-teal-950/60 border border-teal-400/30 rounded-xl text-[11px] text-teal-200 space-y-1">
+            <div className="font-bold text-teal-300">✦ Cam kết quy chế:</div>
             <p>Tôi cam kết làm bài trung thực, không chuyển tab, không sử dụng trợ giúp trái phép trong suốt thời gian thi.</p>
           </div>
 
@@ -681,7 +681,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                 soundEffects.playClick();
                 setStep('testing');
               }}
-              className="btn-3d btn-3d-pink w-full py-3.5 text-sm rounded-2xl font-black cursor-pointer shadow-lg"
+              className="btn-3d btn-3d-teal w-full py-3.5 text-sm rounded-2xl font-black cursor-pointer shadow-lg text-white"
             >
               Vào phòng thi ngay ➔
             </button>
@@ -690,7 +690,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                 soundEffects.playClick();
                 setStep('landing');
               }}
-              className="text-pink-300/70 hover:text-pink-100 text-xs py-1 text-center"
+              className="text-teal-300/70 hover:text-teal-100 text-xs py-1 text-center"
             >
               Quay lại sảnh
             </button>
@@ -728,10 +728,10 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
           e.preventDefault();
           soundEffects.playWarning();
         }}
-        className="min-h-[85vh] bg-[#db2777] rounded-3xl p-4 sm:p-6 text-white flex flex-col justify-between shadow-2xl relative select-none"
+        className="min-h-[85vh] bg-gradient-to-b from-[#0d5c58] via-[#0a4946] to-[#073634] border border-teal-300/30 rounded-3xl p-4 sm:p-6 text-white flex flex-col justify-between shadow-2xl relative select-none"
       >
         {/* Top Header Bar */}
-        <div className="flex items-center justify-between gap-2 pb-3 border-b border-pink-400/40">
+        <div className="flex items-center justify-between gap-2 pb-3 border-b border-teal-300/30">
           {/* Power/Exit button */}
           <button
             onClick={() => {
@@ -787,7 +787,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
               className={`border rounded-full px-3 py-1 flex items-center gap-1.5 shadow-md ${
                 secondsRemaining < 300
                   ? 'bg-rose-700 border-rose-300 animate-pulse'
-                  : 'bg-gradient-to-r from-pink-400/50 to-purple-900/60 border-white/40'
+                  : 'bg-gradient-to-r from-teal-400/40 via-emerald-800/60 to-teal-950/80 border-teal-300/40'
               }`}
             >
               <Clock className="w-3.5 h-3.5 text-amber-300 animate-spin" />
@@ -823,8 +823,8 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
         </div>
 
         {/* Question Matrix Navigation Palette (World-class online exam feature) */}
-        <div className="mt-2 py-2 px-3 bg-black/20 rounded-2xl flex items-center justify-between gap-2 overflow-x-auto">
-          <div className="flex items-center gap-1 text-[11px] font-bold text-pink-200 whitespace-nowrap">
+        <div className="mt-2 py-2 px-3 bg-black/25 rounded-2xl flex items-center justify-between gap-2 overflow-x-auto">
+          <div className="flex items-center gap-1 text-[11px] font-bold text-teal-100 whitespace-nowrap">
             <span>Mục lục câu hỏi ({answeredCount}/{questions.length}):</span>
           </div>
           <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
@@ -855,9 +855,9 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
         </div>
 
         {/* Question Statement Box */}
-        <div className="my-3 bg-white/10 backdrop-blur-xs border border-white/30 rounded-2xl p-5 text-white shadow-lg text-center">
-          <div className="text-xs font-bold text-pink-100 uppercase tracking-wider mb-1 flex items-center justify-center gap-2">
-            <span className="bg-white/20 px-2 py-0.5 rounded-md font-mono text-[10px]">
+        <div className="my-3 bg-[#052b2d]/70 backdrop-blur-xs border border-teal-300/30 rounded-2xl p-5 text-white shadow-lg text-center">
+          <div className="text-xs font-bold text-teal-200 uppercase tracking-wider mb-1 flex items-center justify-center gap-2">
+            <span className="bg-teal-800/60 px-2 py-0.5 rounded-md font-mono text-[10px] text-teal-100">
               {currentQ.partType === 'part2_true_false'
                 ? 'PHẦN II: TRẮC NGHIỆM ĐÚNG / SAI'
                 : currentQ.partType === 'part3_short_answer'
@@ -887,7 +887,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
               return (
                 <div
                   key={si.key}
-                  className="bg-white/15 backdrop-blur-xs border border-white/25 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md"
+                  className="bg-[#052b2d]/60 backdrop-blur-xs border border-teal-300/20 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md"
                 >
                   <div className="flex-1 text-left">
                     <span className="font-black text-amber-300 text-sm mr-2">{si.key})</span>
@@ -915,7 +915,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                       onClick={() => handleToggleSubItem(si.key, false)}
                       className={`px-4 py-2 rounded-xl font-black text-xs cursor-pointer transition-all ${
                         selectedValue === false
-                          ? 'btn-3d btn-3d-pink ring-2 ring-white scale-105 shadow-lg'
+                          ? 'bg-rose-600 hover:bg-rose-500 text-white ring-2 ring-white scale-105 shadow-lg'
                           : 'bg-white/20 hover:bg-white/30 text-white'
                       }`}
                     >
@@ -930,8 +930,8 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
 
         {/* 2. PHẦN III: TRẢ LỜI NGẮN (4 KÝ TỰ SỐ - MẶC ĐỊNH A.1234) */}
         {currentQ.partType === 'part3_short_answer' && (
-          <div className="bg-white/15 backdrop-blur-xs border border-white/25 rounded-2xl p-5 text-center max-w-lg mx-auto w-full space-y-4 my-2 shadow-xl flex-1 flex flex-col justify-center">
-            <div className="text-xs text-pink-200 font-bold uppercase tracking-wider">
+          <div className="bg-[#052b2d]/70 backdrop-blur-xs border border-teal-300/30 rounded-2xl p-5 text-center max-w-lg mx-auto w-full space-y-4 my-2 shadow-xl flex-1 flex flex-col justify-center">
+            <div className="text-xs text-teal-200 font-bold uppercase tracking-wider">
               Nhập 4 ký tự số vào ô bên dưới (Mặc định Thông tư 7991: A.1234):
             </div>
             <div className="flex justify-center items-center gap-2">
@@ -941,7 +941,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                 value={userAnswers[currentQ.id] || ''}
                 onChange={(e) => handleShortAnswerChange(e.target.value)}
                 placeholder="1234"
-                className="w-48 text-center text-3xl font-black font-mono tracking-widest bg-white text-slate-900 border-4 border-amber-300 rounded-2xl py-2.5 px-4 shadow-inner focus:outline-none focus:ring-4 focus:ring-pink-300"
+                className="w-48 text-center text-3xl font-black font-mono tracking-widest bg-white text-slate-900 border-4 border-amber-300 rounded-2xl py-2.5 px-4 shadow-inner focus:outline-none focus:ring-4 focus:ring-teal-300"
               />
             </div>
             {/* On-screen tactile touch keypad */}
@@ -983,7 +983,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
               <button
                 type="button"
                 onClick={() => handleShortAnswerChange('')}
-                className="btn-3d btn-3d-pink px-3 py-1.5 rounded-xl text-white cursor-pointer"
+                className="btn-3d btn-3d-slate px-3 py-1.5 rounded-xl text-white cursor-pointer"
               >
                 Xóa trắng
               </button>
@@ -1031,7 +1031,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
         )}
 
         {/* Bottom Action Bar: Navigation + Strict AI Lock + Submit Button */}
-        <div className="pt-3 flex flex-wrap items-center justify-between gap-3 border-t border-pink-400/40 mt-2">
+        <div className="pt-3 flex flex-wrap items-center justify-between gap-3 border-t border-teal-300/30 mt-2">
           {/* Left: Previous & Next question controls */}
           <div className="flex items-center gap-1.5">
             <button
@@ -1227,8 +1227,8 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
     }
 
     return (
-      <div className="min-h-[84vh] bg-gradient-to-b from-[#251838] via-[#1a1226] to-[#0f0917] rounded-3xl p-4 sm:p-8 text-white relative shadow-2xl flex flex-col justify-center items-center">
-        <div className="w-full max-w-3xl bg-[#34234b]/95 border-2 border-emerald-400/40 rounded-3xl p-6 sm:p-8 text-center shadow-2xl space-y-6">
+      <div className="min-h-[84vh] bg-gradient-to-b from-[#0a2e33] via-[#07252a] to-[#04181b] rounded-3xl p-4 sm:p-8 text-white relative shadow-2xl flex flex-col justify-center items-center border border-teal-500/20">
+        <div className="w-full max-w-3xl bg-[#0b383f]/95 border-2 border-emerald-400/40 rounded-3xl p-6 sm:p-8 text-center shadow-2xl space-y-6">
           {/* Header Trophy & Student Name */}
           <div className="flex flex-col items-center">
             <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 border-2 border-emerald-400 flex items-center justify-center shadow-lg animate-bounce mb-3">
@@ -1240,21 +1240,21 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
             </span>
 
             <h2 className="text-2xl sm:text-3xl font-black text-white">{studentName}</h2>
-            <p className="text-xs text-pink-200/80">{studentInfo} • Bài thi: {resolvedTitle}</p>
+            <p className="text-xs text-teal-200/80">{studentInfo} • Bài thi: {resolvedTitle}</p>
           </div>
 
           {/* Core Scorecard Grid (Điểm số, Đúng, Sai, Thời gian, Vi phạm) */}
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
             {/* Score */}
-            <div className="bg-[#1f142e] border-2 border-emerald-400/40 rounded-2xl p-3 flex flex-col items-center justify-center col-span-2 sm:col-span-1">
-              <span className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">Điểm số</span>
+            <div className="bg-[#06262b] border-2 border-emerald-400/40 rounded-2xl p-3 flex flex-col items-center justify-center col-span-2 sm:col-span-1">
+              <span className="text-[11px] text-teal-200/80 font-bold uppercase tracking-wider">Điểm số</span>
               <span className="text-3xl font-black text-emerald-400 font-mono mt-0.5">
                 {score} <span className="text-xs text-slate-400 font-normal">/ 10</span>
               </span>
             </div>
 
             {/* Đúng */}
-            <div className="bg-[#1f142e] border border-emerald-500/30 rounded-2xl p-3 flex flex-col items-center justify-center">
+            <div className="bg-[#06262b] border border-emerald-500/30 rounded-2xl p-3 flex flex-col items-center justify-center">
               <span className="text-[11px] text-emerald-300 font-bold flex items-center gap-1">
                 <CheckCircle2 className="w-3.5 h-3.5" /> Số câu đúng
               </span>
@@ -1264,7 +1264,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
             </div>
 
             {/* Sai */}
-            <div className="bg-[#1f142e] border border-rose-500/30 rounded-2xl p-3 flex flex-col items-center justify-center">
+            <div className="bg-[#06262b] border border-rose-500/30 rounded-2xl p-3 flex flex-col items-center justify-center">
               <span className="text-[11px] text-rose-300 font-bold flex items-center gap-1">
                 <XCircle className="w-3.5 h-3.5" /> Số câu sai
               </span>
@@ -1274,7 +1274,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
             </div>
 
             {/* Thời gian */}
-            <div className="bg-[#1f142e] border border-amber-500/30 rounded-2xl p-3 flex flex-col items-center justify-center">
+            <div className="bg-[#06262b] border border-amber-500/30 rounded-2xl p-3 flex flex-col items-center justify-center">
               <span className="text-[11px] text-amber-300 font-bold flex items-center gap-1">
                 <Clock className="w-3.5 h-3.5" /> Thời gian làm
               </span>
@@ -1284,8 +1284,8 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
             </div>
 
             {/* Vi phạm chuyển tab */}
-            <div className="bg-[#1f142e] border border-slate-700 rounded-2xl p-3 flex flex-col items-center justify-center col-span-2 sm:col-span-1">
-              <span className="text-[11px] text-slate-400 font-bold">Biên bản vi phạm</span>
+            <div className="bg-[#06262b] border border-teal-500/30 rounded-2xl p-3 flex flex-col items-center justify-center col-span-2 sm:col-span-1">
+              <span className="text-[11px] text-teal-200/80 font-bold">Biên bản vi phạm</span>
               <span className={`text-base font-black font-mono mt-0.5 ${finalSubmission.tabSwitchCount && finalSubmission.tabSwitchCount > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
                 {finalSubmission.tabSwitchCount ? `${finalSubmission.tabSwitchCount} lần tab` : '0 vi phạm ✓'}
               </span>
@@ -1372,7 +1372,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                     <FileCheck className="w-5 h-5 text-teal-400" />
                     <span>Chi Tiết Từng Câu Hỏi & Hướng Dẫn Giải</span>
                   </h3>
-                  <p className="text-[11px] text-pink-200/70">
+                  <p className="text-[11px] text-teal-200/80">
                     Bấm &quot;Gia sư AI giải thích&quot; ở từng câu để Gemini 3.8 Flash phân tích sâu kiến thức cho bạn!
                   </p>
                 </div>
@@ -1584,9 +1584,9 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
 
           return (
             <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 overflow-y-auto animate-in fade-in duration-200">
-              <div className="bg-[#1c1228] border-2 border-indigo-500/60 rounded-3xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl text-white overflow-hidden my-auto animate-in zoom-in-95 duration-200">
+              <div className="bg-[#082226] border-2 border-teal-500/50 rounded-3xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl text-white overflow-hidden my-auto animate-in zoom-in-95 duration-200">
                 {/* Modal Header */}
-                <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-700 px-6 py-5 flex items-center justify-between border-b border-indigo-400/30 shrink-0">
+                <div className="bg-gradient-to-r from-teal-700 via-emerald-700 to-teal-800 px-6 py-5 flex items-center justify-between border-b border-teal-400/30 shrink-0">
                   <div className="flex items-center gap-3">
                     <div className="w-11 h-11 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-amber-300 shadow-inner">
                       <Award className="w-6 h-6 stroke-[2.5]" />
@@ -1600,7 +1600,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                           Đã Nộp Bài
                         </span>
                       </div>
-                      <p className="text-xs text-emerald-100/90 font-medium">
+                      <p className="text-xs text-teal-100/90 font-medium">
                         Học sinh: <strong className="text-white">{studentName}</strong> ({studentInfo}) • Đề thi: {resolvedTitle}
                       </p>
                     </div>
@@ -1620,7 +1620,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                 {/* Modal Scrollable Body */}
                 <div className="p-5 sm:p-6 space-y-6 overflow-y-auto flex-1 text-slate-100">
                   {/* Score & Key Metrics Banner */}
-                  <div className="bg-[#2a1b3d] border border-indigo-500/30 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-5 shadow-lg">
+                  <div className="bg-[#0b2e35] border border-teal-500/30 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-5 shadow-lg">
                     {/* Big Score Block */}
                     <div className="flex items-center gap-4 text-center sm:text-left">
                       <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-700 p-1 flex flex-col items-center justify-center shadow-lg border border-emerald-300/40 shrink-0">
@@ -1679,7 +1679,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                   </div>
 
                   {/* Section 1: Correctly Answered Questions */}
-                  <div className="bg-[#241734] border border-emerald-500/30 rounded-2xl p-4 sm:p-5 space-y-3">
+                  <div className="bg-[#06262b] border border-emerald-500/30 rounded-2xl p-4 sm:p-5 space-y-3">
                     <div className="flex items-center justify-between">
                       <h4 className="text-sm font-black text-emerald-300 flex items-center gap-2">
                         <CheckCircle2 className="w-4 h-4 text-emerald-400" />
@@ -1716,7 +1716,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                   </div>
 
                   {/* Section 2: Detailed Breakdown of Wrong Answers */}
-                  <div className="bg-[#241734] border border-rose-500/30 rounded-2xl p-4 sm:p-5 space-y-4">
+                  <div className="bg-[#06262b] border border-rose-500/30 rounded-2xl p-4 sm:p-5 space-y-4">
                     <div className="flex items-center justify-between">
                       <h4 className="text-sm font-black text-rose-300 flex items-center gap-2">
                         <XCircle className="w-4 h-4 text-rose-400" />
@@ -1833,7 +1833,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
 
                   {/* Section 3: Unanswered Questions (if any) */}
                   {unansweredQuestions.length > 0 && (
-                    <div className="bg-[#241734] border border-amber-500/30 rounded-2xl p-4 sm:p-5 space-y-3">
+                    <div className="bg-[#06262b] border border-amber-500/30 rounded-2xl p-4 sm:p-5 space-y-3">
                       <h4 className="text-sm font-black text-amber-300 flex items-center gap-2">
                         <AlertTriangle className="w-4 h-4 text-amber-400" />
                         <span>Các Câu Bị Bỏ Qua / Chưa Trả Lời ({unansweredQuestions.length} câu)</span>
@@ -1867,7 +1867,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                 </div>
 
                 {/* Modal Action Buttons Footer */}
-                <div className="bg-[#170e22] px-6 py-4 border-t border-indigo-500/30 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                <div className="bg-[#04191c] px-6 py-4 border-t border-teal-500/30 flex flex-wrap items-center justify-between gap-3 shrink-0">
                   <div className="text-xs text-slate-400">
                     Lượt làm: <strong className="text-white">{completedAttemptsCount}</strong> / {resolvedAllowedAttempts === 0 ? 'Không giới hạn' : resolvedAllowedAttempts}
                   </div>

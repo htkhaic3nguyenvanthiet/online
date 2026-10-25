@@ -286,7 +286,7 @@ export default function App() {
     const questionsToServe = getExamQuestions(activeStudentExamSession, activeStudentExamTitle);
 
     return (
-      <div className="min-h-screen bg-[#140b22] flex flex-col font-sans text-slate-800">
+      <div className="min-h-screen bg-slate-900 bg-gradient-to-b from-[#062024] via-[#082a30] to-[#04171a] flex flex-col font-sans text-slate-100">
         <main className="flex-1 max-w-5xl mx-auto w-full p-2 sm:p-4 md:p-6 flex flex-col justify-center">
           <StudentArenaView
             quizTitle={activeStudentExamTitle || activeStudentExamSession?.title || 'Bài kiểm tra trực tuyến'}
