@@ -23,6 +23,8 @@ interface TopNavbarProps {
   onToggleSound: () => void;
   onNavigateToLiveMonitor: () => void;
   onOpenCloudModal: () => void;
+  autoBackupEnabled?: boolean;
+  syncKey?: string;
 }
 
 export const TopNavbar: React.FC<TopNavbarProps> = ({
@@ -33,7 +35,9 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
   soundEnabled,
   onToggleSound,
   onNavigateToLiveMonitor,
-  onOpenCloudModal
+  onOpenCloudModal,
+  autoBackupEnabled = true,
+  syncKey = 'THPT-MANGTHIT-KHAI-2026',
 }) => {
   return (
     <header className="bg-white border-b border-slate-200/90 sticky top-0 z-40 shadow-xs">
@@ -153,12 +157,15 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
               soundEffects.playClick();
               onOpenCloudModal();
             }}
-            className="btn-3d btn-3d-blue px-3 py-1.5 text-xs rounded-lg flex items-center gap-1.5 cursor-pointer font-bold"
-            title="Đồng bộ hóa đám mây và sao lưu Google Drive"
+            className="btn-3d btn-3d-blue px-3 py-1.5 text-xs rounded-lg flex items-center gap-1.5 cursor-pointer font-bold shadow-xs"
+            title={`Đồng bộ đám mây & Google Drive (Mã Key: ${syncKey}) • Tự động sao lưu: ${autoBackupEnabled ? 'BẬT' : 'TẮT'}`}
           >
             <Cloud className="w-3.5 h-3.5 text-blue-200" />
             <span>Đám Mây & Drive</span>
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+            <span
+              className={`w-2 h-2 rounded-full ${autoBackupEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}
+              title={autoBackupEnabled ? 'Tự động sao lưu: BẬT' : 'Tự động sao lưu: TẮT'}
+            ></span>
           </button>
 
           {/* Sound Synthesizer toggle */}

@@ -47,6 +47,35 @@ export default function App() {
     return typeof window !== 'undefined' && getExamIdFromUrl() !== null;
   });
 
+  const [currentSyncKey, setCurrentSyncKey] = useState<string>(() => cloudStorageService.getSyncKey());
+  const [autoBackupEnabled, setAutoBackupEnabled] = useState<boolean>(() => cloudStorageService.isAutoBackupEnabled());
+  const [autoBackupToast, setAutoBackupToast] = useState<string | null>(null);
+
+  // Auto-backup function that immediately persists questions & exams to cloud server
+  const triggerAutoBackup = (
+    qList: Quiz[] = quizzes,
+    cList: Classroom[] = classrooms,
+    sList: ExamSession[] = sessions
+  ) => {
+    if (!autoBackupEnabled) return;
+    cloudStorageService
+      .syncToCloud(
+        {
+          quizzes: qList,
+          classrooms: cList,
+          sessions: sList,
+          submissions,
+        },
+        currentSyncKey
+      )
+      .then((res) => {
+        if (res.success) {
+          setAutoBackupToast(`✓ Đã tự động lưu lên máy chủ: ${new Date().toLocaleTimeString('vi-VN')}`);
+          setTimeout(() => setAutoBackupToast(null), 3500);
+        }
+      });
+  };
+
   // URL Routing check for direct student exam link (?exam=... or #exam/...)
   useEffect(() => {
     const handleUrlRouting = () => {
@@ -55,7 +84,25 @@ export default function App() {
         setIsDirectStudentMode(true);
         setAppMode('student');
 
-        // 1. Look for matching session
+        // Always attempt to fetch live exam from server so student gets newly uploaded questions immediately!
+        cloudStorageService.fetchExamFromServer(examParam).then((res) => {
+          if (res.found && res.quiz) {
+            if (res.quiz.questions && res.quiz.questions.length > 0) {
+              setQuizzes((prev) => {
+                const exists = prev.some((q) => q.id === res.quiz?.id);
+                return exists ? prev.map((q) => (q.id === res.quiz?.id ? res.quiz! : q)) : [res.quiz!, ...prev];
+              });
+            }
+            if (res.session) {
+              setActiveStudentExamSession(res.session);
+              setActiveStudentExamTitle(res.session.title);
+            } else {
+              setActiveStudentExamTitle(res.quiz.title);
+            }
+          }
+        });
+
+        // 1. Look for matching session in local state
         const matchedSess = sessions.find(
           (s) => s.id === examParam || s.quizId === examParam
         );
@@ -65,7 +112,7 @@ export default function App() {
           return;
         }
 
-        // 2. Look for matching quiz
+        // 2. Look for matching quiz in local state
         const matchedQuiz = quizzes.find(
           (q) =>
             q.id === examParam ||
@@ -98,16 +145,16 @@ export default function App() {
     return () => window.removeEventListener('popstate', handleUrlRouting);
   }, [sessions, quizzes]);
 
-  // Load persistent cloud state on mount
+  // Load persistent cloud state on mount using teacher's Sync Key
   useEffect(() => {
-    cloudStorageService.fetchFromCloud().then((cloudData) => {
+    cloudStorageService.fetchFromCloud(currentSyncKey).then((cloudData) => {
       if (cloudData) {
         if (cloudData.quizzes && cloudData.quizzes.length > 0) setQuizzes(cloudData.quizzes);
         if (cloudData.classrooms && cloudData.classrooms.length > 0) setClassrooms(cloudData.classrooms);
         if (cloudData.sessions && cloudData.sessions.length > 0) setSessions(cloudData.sessions);
       }
     });
-  }, []);
+  }, [currentSyncKey]);
 
   // Real-time synchronization
   useEffect(() => {
@@ -158,15 +205,21 @@ export default function App() {
         { id: 'st-new-1', fullName: 'Võ Minh Quân', studentCode: '26CN' + Math.floor(100 + Math.random() * 800), completedExams: 1, lastScore: 9.5 }
       ]
     };
-    setClassrooms((prev) => [created, ...prev]);
+    const updated = [created, ...classrooms];
+    setClassrooms(updated);
+    triggerAutoBackup(quizzes, updated, sessions);
   };
 
   const handleSaveQuiz = (newQuiz: Quiz) => {
-    setQuizzes((prev) => [newQuiz, ...prev]);
+    const updated = [newQuiz, ...quizzes];
+    setQuizzes(updated);
+    triggerAutoBackup(updated, classrooms, sessions);
   };
 
-  const handleUpdateQuiz = (updated: Quiz) => {
-    setQuizzes((prev) => prev.map((q) => (q.id === updated.id ? updated : q)));
+  const handleUpdateQuiz = (updatedQuiz: Quiz) => {
+    const updated = quizzes.map((q) => (q.id === updatedQuiz.id ? updatedQuiz : q));
+    setQuizzes(updated);
+    triggerAutoBackup(updated, classrooms, sessions);
   };
 
   const handleDeployQuiz = (quiz: Quiz) => {
@@ -186,7 +239,9 @@ export default function App() {
       maxSlots: 500,
       isArenaMode: quiz.isInteractive
     };
-    setSessions((prev) => [newSession, ...prev]);
+    const updatedSessions = [newSession, ...sessions];
+    setSessions(updatedSessions);
+    triggerAutoBackup(quizzes, classrooms, updatedSessions);
     setCurrentTab('online-sessions');
   };
 
@@ -250,6 +305,8 @@ export default function App() {
           setCurrentTab('live-monitor');
         }}
         onOpenCloudModal={() => setIsCloudModalOpen(true)}
+        autoBackupEnabled={autoBackupEnabled}
+        syncKey={currentSyncKey}
       />
 
       {/* Main Workspace Body */}
@@ -508,6 +565,13 @@ export default function App() {
         classrooms={classrooms}
         sessions={sessions}
         submissions={submissions}
+        autoBackupEnabled={autoBackupEnabled}
+        onToggleAutoBackup={(val) => {
+          setAutoBackupEnabled(val);
+          cloudStorageService.setAutoBackupEnabled(val);
+        }}
+        currentSyncKey={currentSyncKey}
+        onChangeSyncKey={(key) => setCurrentSyncKey(key)}
         onDataRestored={(data) => {
           if (data.quizzes) setQuizzes(data.quizzes);
           if (data.classrooms) setClassrooms(data.classrooms);
@@ -515,6 +579,14 @@ export default function App() {
         }}
         onClearJunkData={handleClearJunkData}
       />
+
+      {/* Auto-backup toast indicator */}
+      {autoBackupToast && (
+        <div className="fixed bottom-6 left-6 z-50 bg-emerald-950/90 text-emerald-200 border border-emerald-400 px-4 py-2.5 rounded-2xl shadow-2xl backdrop-blur-md flex items-center gap-2 text-xs font-bold animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span>{autoBackupToast}</span>
+        </div>
+      )}
     </div>
   );
 }

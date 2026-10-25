@@ -27,16 +27,39 @@ const ai = new GoogleGenAI({
   },
 });
 
-// Cloud Storage persistent directory
+// Cloud Storage persistent directory with Sync Key support
 const DATA_DIR = path.join(__dirname, '.data');
+const SYNC_KEYS_DIR = path.join(DATA_DIR, 'sync_keys');
 const CLOUD_STORE_FILE = path.join(DATA_DIR, 'cloud_store.json');
 
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
+if (!fs.existsSync(SYNC_KEYS_DIR)) {
+  fs.mkdirSync(SYNC_KEYS_DIR, { recursive: true });
+}
 
-// Ensure default cloud state
-function getCloudData() {
+function sanitizeSyncKey(key?: any): string {
+  if (!key || typeof key !== 'string') return 'THPT-MANGTHIT-KHAI-2026';
+  const clean = key.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
+  return clean || 'THPT-MANGTHIT-KHAI-2026';
+}
+
+// Ensure cloud state by sync key with fallback
+function getCloudData(syncKey?: string) {
+  const cleanKey = sanitizeSyncKey(syncKey);
+  const keyFile = path.join(SYNC_KEYS_DIR, `${cleanKey}.json`);
+
+  if (fs.existsSync(keyFile)) {
+    try {
+      const content = fs.readFileSync(keyFile, 'utf-8');
+      return JSON.parse(content);
+    } catch (err) {
+      console.error(`Error reading sync key store (${cleanKey}):`, err);
+    }
+  }
+
+  // Fallback to default cloud_store.json
   if (fs.existsSync(CLOUD_STORE_FILE)) {
     try {
       const content = fs.readFileSync(CLOUD_STORE_FILE, 'utf-8');
@@ -48,12 +71,26 @@ function getCloudData() {
   return null;
 }
 
-function saveCloudData(data: any) {
+function saveCloudData(data: any, syncKey?: string) {
+  const cleanKey = sanitizeSyncKey(syncKey || data?.syncKey);
+  const keyFile = path.join(SYNC_KEYS_DIR, `${cleanKey}.json`);
+
   try {
-    fs.writeFileSync(CLOUD_STORE_FILE, JSON.stringify(data, null, 2), 'utf-8');
+    const payloadWithMeta = {
+      ...data,
+      syncKey: cleanKey,
+      serverSavedAt: new Date().toISOString()
+    };
+    const content = JSON.stringify(payloadWithMeta, null, 2);
+
+    // Write under specific sync key
+    fs.writeFileSync(keyFile, content, 'utf-8');
+
+    // Also update default active file for instant access
+    fs.writeFileSync(CLOUD_STORE_FILE, content, 'utf-8');
     return true;
   } catch (err) {
-    console.error('Error saving cloud store:', err);
+    console.error(`Error saving cloud store (${cleanKey}):`, err);
     return false;
   }
 }
@@ -69,10 +106,16 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Cloud Sync endpoints
+// Cloud Sync endpoints with Sync Key support
 app.get('/api/cloud/data', (req, res) => {
-  const data = getCloudData();
-  res.json({ success: true, data });
+  const syncKey = (req.query.syncKey as string) || (req.query.key as string);
+  const data = getCloudData(syncKey);
+  res.json({
+    success: true,
+    data,
+    syncKey: sanitizeSyncKey(syncKey),
+    found: Boolean(data)
+  });
 });
 
 app.post('/api/cloud/sync', (req, res) => {
@@ -80,11 +123,52 @@ app.post('/api/cloud/sync', (req, res) => {
   if (!payload) {
     return res.status(400).json({ success: false, error: 'Thiếu dữ liệu' });
   }
-  const saved = saveCloudData(payload);
+  const syncKey = sanitizeSyncKey(payload.syncKey || (req.query.syncKey as string));
+  const saved = saveCloudData(payload, syncKey);
   res.json({
     success: saved,
-    message: saved ? 'Đã lưu và đồng bộ thành công lên máy chủ đám mây!' : 'Lỗi khi lưu trữ đám mây',
+    syncKey,
+    message: saved
+      ? `Đã lưu và đồng bộ thành công lên máy chủ với Mã Khóa [${syncKey}]!`
+      : 'Lỗi khi lưu trữ đám mây',
     timestamp: new Date().toLocaleString('vi-VN'),
+  });
+});
+
+// Student exam fetch endpoint: allows student devices to directly fetch questions from server
+app.get('/api/exam/:id', (req, res) => {
+  const examId = req.params.id;
+  if (!examId) return res.status(400).json({ success: false, error: 'Thiếu mã đề/phiên thi' });
+
+  // Read latest server state
+  const data = getCloudData();
+  if (!data) {
+    return res.json({ success: false, error: 'Chưa có dữ liệu đề thi trên máy chủ', questions: [] });
+  }
+
+  // Look for matching session
+  const session = data.sessions?.find((s: any) => s.id === examId || s.quizId === examId);
+  // Look for matching quiz
+  const quiz = data.quizzes?.find(
+    (q: any) =>
+      q.id === examId ||
+      (session && q.id === session.quizId) ||
+      q.id?.slice(0, 6) === examId ||
+      q.title === examId ||
+      examId.startsWith(q.id?.slice(0, 6))
+  );
+
+  const questions = (quiz?.questions && quiz.questions.length > 0)
+    ? quiz.questions
+    : [];
+
+  return res.json({
+    success: true,
+    examId,
+    session,
+    quiz,
+    questions,
+    found: Boolean(quiz || session)
   });
 });
 
