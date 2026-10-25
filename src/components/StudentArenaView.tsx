@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import confetti from 'canvas-confetti';
 import {
   Power,
@@ -80,8 +80,59 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
   const [studentName, setStudentName] = useState('Nguyễn Thành Nam');
   const [studentInfo, setStudentInfo] = useState('12A5 - SBD: 052');
 
-  // Test state
-  const questions = (customQuestions && customQuestions.length > 0) ? customQuestions : sampleQuestions;
+  // Attempt tracker persistence
+  const [attemptNumber, setAttemptNumber] = useState(1);
+  const [completedAttemptsCount, setCompletedAttemptsCount] = useState(0);
+
+  // Test state: Strictly teacher-authored questions with randomization (shuffling question order and answer options per attempt/session)
+  const shuffleArray = <T,>(array: T[]): T[] => {
+    const arr = [...array];
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  };
+
+  const baseTeacherQuestions = useMemo(() => {
+    if (customQuestions && customQuestions.length > 0) {
+      return customQuestions;
+    }
+    return sampleQuestions;
+  }, [customQuestions]);
+
+  const questions = useMemo(() => {
+    if (!baseTeacherQuestions || baseTeacherQuestions.length === 0) return [];
+    const shuffledQ = shuffleArray(baseTeacherQuestions);
+    return shuffledQ.map((q) => {
+      const cloned: Question = { ...q };
+      if ((!cloned.partType || cloned.partType === 'part1_choice') && cloned.options && cloned.options.length > 0) {
+        const originalCorrectOpt = cloned.options.find(o => o.key === cloned.correctAnswer || o.isCorrect);
+        const originalCorrectText = originalCorrectOpt ? originalCorrectOpt.text : null;
+
+        const shuffledOpts = shuffleArray(cloned.options);
+        const keys: OptionKey[] = ['A', 'B', 'C', 'D'];
+        let newCorrectKey: OptionKey = 'A';
+
+        cloned.options = shuffledOpts.map((opt, idx) => {
+          const assignedKey = keys[idx] || ('A' as OptionKey);
+          const isTargetCorrect = originalCorrectText ? opt.text === originalCorrectText : !!opt.isCorrect;
+          if (isTargetCorrect) {
+            newCorrectKey = assignedKey;
+          }
+          return {
+            ...opt,
+            key: assignedKey,
+            isCorrect: isTargetCorrect
+          };
+        });
+        cloned.correctAnswer = newCorrectKey;
+      } else if (cloned.partType === 'part2_true_false' && cloned.subItems && cloned.subItems.length > 0) {
+        cloned.subItems = shuffleArray(cloned.subItems);
+      }
+      return cloned;
+    });
+  }, [baseTeacherQuestions, attemptNumber]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [userAnswers, setUserAnswers] = useState<Record<string, any>>({});
   const [streak, setStreak] = useState(0);
@@ -109,9 +160,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
   const [aiExplanationText, setAiExplanationText] = useState<string | null>(null);
   const [aiExplainedQuestionId, setAiExplainedQuestionId] = useState<string | null>(null);
 
-  // Attempt tracker persistence
-  const [attemptNumber, setAttemptNumber] = useState(1);
-  const [completedAttemptsCount, setCompletedAttemptsCount] = useState(0);
+
 
   // Load past attempts count
   useEffect(() => {
