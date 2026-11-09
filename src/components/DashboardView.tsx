@@ -39,9 +39,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </span>
               <span className="text-emerald-100 text-xs font-semibold">Tự động trả điểm Real-time</span>
             </div>
-            <h1 className="text-xl md:text-2xl font-black tracking-tight text-white">
-              Test Online • Trường THPT Mang Thít
-            </h1>
             <p className="text-emerald-100 text-xs font-medium">
               Tác giả: Thầy Hồ Tấn Khải • Hệ thống khảo thí số & Đấu trường học tập tương tác chịu tải 500+ học sinh
             </p>
