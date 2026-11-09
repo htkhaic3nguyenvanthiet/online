@@ -90,42 +90,43 @@ export default function App() {
         cloudStorageService
           .fetchExamFromServer(examParam)
           .then((res) => {
-            if (res.found) {
-              const fetchedQuestions =
-                res.questions && res.questions.length > 0
-                  ? res.questions
-                  : res.session?.questions || res.quiz?.questions;
+            if (res.found && res.questions && res.questions.length > 0) {
+              const fetchedQuestions = res.questions;
+              const title = res.session?.title || res.quiz?.title || 'Bài kiểm tra trực tuyến';
 
-              if (res.session) {
-                const updatedSess: ExamSession = {
-                  ...res.session,
-                  questions: fetchedQuestions || res.session.questions,
-                };
-                setActiveStudentExamSession(updatedSess);
-                setActiveStudentExamTitle(updatedSess.title);
-                setSessions((prev) => [updatedSess, ...prev.filter((s) => s.id !== updatedSess.id)]);
-              } else if (res.quiz) {
-                const updatedSess: ExamSession = {
-                  id: 'sess-' + res.quiz.id,
-                  title: res.quiz.title,
-                  quizId: res.quiz.id,
-                  className: 'Khối 12',
-                  startTime: 'Vừa tạo',
-                  endTime: 'Sau 30 ngày',
-                  status: 'active',
-                  shareUrl: getStudentExamShareUrl(res.quiz.id),
-                  allowedAttempts: 5,
-                  durationMinutes: res.quiz.durationMinutes || 50,
-                  totalSubmissions: 0,
-                  maxSlots: 500,
-                  isArenaMode: res.quiz.isInteractive,
-                  questions: fetchedQuestions || res.quiz.questions,
-                };
-                setActiveStudentExamSession(updatedSess);
-                setActiveStudentExamTitle(res.quiz.title);
-              }
+              const updatedSess: ExamSession = {
+                id: res.session?.id || examParam,
+                title,
+                quizId: res.session?.quizId || res.quiz?.id || 'quiz-' + examParam,
+                className: res.session?.className || 'Khối 12',
+                startTime: res.session?.startTime || 'Đang mở',
+                endTime: res.session?.endTime || 'Sau 30 ngày',
+                status: 'active',
+                shareUrl: getStudentExamShareUrl(examParam),
+                allowedAttempts: res.session?.allowedAttempts || 5,
+                durationMinutes: res.session?.durationMinutes || res.quiz?.durationMinutes || 45,
+                totalSubmissions: 0,
+                maxSlots: 500,
+                isArenaMode: true,
+                questionCount: fetchedQuestions.length,
+                questions: fetchedQuestions,
+                scoringConfig: res.session?.scoringConfig || {
+                  totalPoints: 10,
+                  durationMinutes: 45,
+                  part1PointPerQuestion: 0.25,
+                  part2PointPerQuestion: 1.0,
+                  part3PointPerQuestion: 0.25,
+                  allowViewAnswerKey: true,
+                  viewAnswerMinScore: 4.0,
+                  allowAiTutorExplanation: true,
+                }
+              };
 
-              if (res.quiz && fetchedQuestions && fetchedQuestions.length > 0) {
+              setActiveStudentExamSession(updatedSess);
+              setActiveStudentExamTitle(title);
+              setSessions((prev) => [updatedSess, ...prev.filter((s) => s.id !== updatedSess.id)]);
+
+              if (res.quiz) {
                 setQuizzes((prev) => [{ ...res.quiz!, questions: fetchedQuestions }, ...prev.filter((q) => q.id !== res.quiz?.id)]);
               }
             } else {
@@ -138,10 +139,10 @@ export default function App() {
                   examParam.startsWith(q.id.slice(0, 6))
               );
 
-              if (localSess) {
+              if (localSess && localSess.questions && localSess.questions.length > 0) {
                 setActiveStudentExamSession(localSess);
                 setActiveStudentExamTitle(localSess.title);
-              } else if (localQuiz) {
+              } else if (localQuiz && localQuiz.questions && localQuiz.questions.length > 0) {
                 setActiveStudentExamTitle(localQuiz.title);
                 setActiveStudentExamSession({
                   id: 'sess-' + localQuiz.id,
@@ -429,29 +430,49 @@ export default function App() {
                 Hệ thống đang tải toàn bộ câu hỏi do Giáo viên biên soạn từ máy chủ. Vui lòng bấm nút bên dưới nếu đường truyền mạng chậm:
               </p>
             </div>
-            <button
-              onClick={() => {
-                const examParam = getExamIdFromUrl();
-                if (examParam) {
+            <div className="space-y-3 pt-2">
+              <button
+                onClick={() => {
+                  const examParam = getExamIdFromUrl() || 'sess-default';
                   setIsExamLoading(true);
                   cloudStorageService.fetchExamFromServer(examParam).then((res) => {
                     if (res.found && res.questions && res.questions.length > 0) {
-                      const updatedSess = {
-                        ...(res.session || activeStudentExamSession || {}),
+                      const updatedSess: ExamSession = {
                         id: examParam,
                         title: res.session?.title || res.quiz?.title || 'Bài kiểm tra trực tuyến',
+                        quizId: res.session?.quizId || res.quiz?.id || 'quiz-' + examParam,
+                        className: res.session?.className || 'Khối 12',
+                        startTime: 'Đang mở',
+                        endTime: '31/12/2026',
+                        status: 'active',
+                        shareUrl: getStudentExamShareUrl(examParam),
+                        allowedAttempts: 5,
+                        durationMinutes: res.session?.durationMinutes || res.quiz?.durationMinutes || 45,
+                        totalSubmissions: 0,
+                        maxSlots: 500,
+                        isArenaMode: true,
+                        questionCount: res.questions.length,
                         questions: res.questions,
-                      } as ExamSession;
+                      };
                       setActiveStudentExamSession(updatedSess);
                       setActiveStudentExamTitle(updatedSess.title);
                     }
                   }).finally(() => setIsExamLoading(false));
-                }
-              }}
-              className="btn-3d btn-3d-teal w-full py-3.5 text-xs rounded-xl font-black cursor-pointer shadow-lg text-white"
-            >
-              🔄 Bấm vào đây để tải lại đề thi
-            </button>
+                }}
+                className="btn-3d btn-3d-teal w-full py-3 text-xs rounded-xl font-black cursor-pointer shadow-lg text-white"
+              >
+                🔄 Bấm vào đây để tải lại đề thi từ Máy Chủ
+              </button>
+
+              <button
+                onClick={() => {
+                  window.location.reload();
+                }}
+                className="w-full py-2 text-[11px] font-bold text-teal-300 hover:text-white transition-colors cursor-pointer"
+              >
+                ✨ Làm mới trang web (F5 / Refresh)
+              </button>
+            </div>
           </div>
         </div>
       );

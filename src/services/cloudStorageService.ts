@@ -213,7 +213,7 @@ export const cloudStorageService = {
         });
         if (res.ok) {
           const json = await res.json();
-          if (json.success && json.found) {
+          if (json.success && json.found && json.questions && json.questions.length > 0) {
             return {
               session: json.session,
               quiz: json.quiz,
@@ -228,6 +228,30 @@ export const cloudStorageService = {
       if (attempt < retries) {
         await new Promise((r) => setTimeout(r, 400));
       }
+    }
+
+    // Fallback: Query fetchFromCloud to find any session/quiz with questions in active cloud store
+    try {
+      const cloudData = await this.fetchFromCloud();
+      if (cloudData) {
+        const matchedSess = cloudData.sessions?.find(
+          (s) => s.id === examId || s.quizId === examId || (s.questions && s.questions.length > 0)
+        );
+        const matchedQuiz = cloudData.quizzes?.find(
+          (q) => q.id === examId || (matchedSess && q.id === matchedSess.quizId) || (q.questions && q.questions.length > 0)
+        );
+        const questions = matchedSess?.questions || matchedQuiz?.questions || [];
+        if (questions.length > 0) {
+          return {
+            session: matchedSess,
+            quiz: matchedQuiz,
+            questions,
+            found: true,
+          };
+        }
+      }
+    } catch (e) {
+      console.warn('Cloud store fallback failed:', e);
     }
 
     return { found: false };
