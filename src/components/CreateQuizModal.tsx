@@ -26,6 +26,7 @@ import {
   ParsedExamResult
 } from '../utils/wordExamParser';
 import { RichText } from './RichText';
+import { SubjectOptions } from './SubjectOptions';
 
 interface CreateQuizModalProps {
   isOpen: boolean;
@@ -642,13 +643,7 @@ A. 1234`}
                   onChange={(e) => setSubject(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:border-teal-500"
                 >
-                  <option value="Công nghệ 12">Công nghệ 12</option>
-                  <option value="Công nghệ 10">Công nghệ 10</option>
-                  <option value="Sinh học 11">Sinh học 11</option>
-                  <option value="Sinh học 12">Sinh học 12</option>
-                  <option value="Toán học 12">Toán học 12</option>
-                  <option value="Vật lí 12">Vật lí 12</option>
-                  <option value="Hóa học 12">Hóa học 12</option>
+                  <SubjectOptions current={subject} />
                 </select>
               </div>
 

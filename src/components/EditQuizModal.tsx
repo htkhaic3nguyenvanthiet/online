@@ -13,6 +13,7 @@ import { Quiz, Question, OptionKey } from '../types/quiz';
 import { soundEffects } from '../utils/soundEffects';
 import { findPart3Violations, validatePart3Answer } from '../utils/wordExamParser';
 import { RichText } from './RichText';
+import { SubjectOptions } from './SubjectOptions';
 
 interface EditQuizModalProps {
   quiz: Quiz | null;
@@ -151,6 +152,17 @@ export const EditQuizModal: React.FC<EditQuizModalProps> = ({
                 onChange={(e) => setDurationMinutes(parseInt(e.target.value) || 45)}
                 className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl focus:border-teal-500"
               />
+            </div>
+
+            <div className="sm:col-span-3">
+              <label className="block text-slate-700 mb-1 font-bold">Môn học:</label>
+              <select
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl focus:border-teal-500 font-bold"
+              >
+                <SubjectOptions current={subject} />
+              </select>
             </div>
           </div>
 

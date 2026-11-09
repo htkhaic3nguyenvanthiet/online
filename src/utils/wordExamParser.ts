@@ -1,6 +1,7 @@
 import mammoth from 'mammoth';
 import { Question, OptionKey, SubQuestionItem, Quiz } from '../types/quiz';
 import { preprocessDocx, MathSegment } from './docxPreprocess';
+import { DEFAULT_SUBJECT, isKnownSubject } from '../data/subjects';
 
 export interface ParsedExamResult {
   title: string;
@@ -719,17 +720,84 @@ export function parseCircular7991Html(
   const fullPlainText = stripHtml(normalizedHtml);
   const headerText = fullPlainText.substring(0, 2500);
 
-  let detectedSubject: string | null = null;
+  // --- Subject + grade detection ------------------------------------------
+  // Tên môn chuẩn nằm ở src/data/subjects.ts (SUBJECT_OPTIONS); bộ nhận diện
+  // CHỈ được trả về một trong các chuỗi đó (tên môn + khối lớp), không bao
+  // giờ trả chuỗi tự do — không nhận diện được thì để null, nơi gọi dùng
+  // môn mặc định như trước.
+  //
+  // Nguồn tìm MÔN (theo thứ tự tin cậy): dòng "Môn: ..." ở đầu đề → tiêu
+  // đề/tên file → các mẩu "MÔN ..." khác trong khối đầu đề → 300 ký tự đầu
+  // của đề (bắt các đề ghi môn ngay trong dòng tiêu đề kiểu "ĐỀ THI TOÁN 12").
+  // Nguồn tìm KHỐI LỚP: cùng dòng "Môn:" → tiêu đề/tên file → nhãn
+  // "Lớp/Khối" trong khối đầu đề; không thấy thì mặc định lớp 12.
+  const SUBJECT_SYNONYMS: Array<[RegExp, string]> = [
+    [/GIÁO\s*DỤC\s*KINH\s*TẾ|GIAO\s*DUC\s*KINH\s*TE|GDKT|GDCD/, 'Giáo dục kinh tế và pháp luật'],
+    [/CÔNG\s*NGHỆ|CONG\s*NGHE/, 'Công nghệ'],
+    [/NGỮ\s*VĂN|NGU\s*VAN/, 'Ngữ văn'],
+    [/TIẾNG\s*ANH|TIENG\s*ANH|ENGLISH/, 'Tiếng Anh'],
+    [/VẬT\s*L[ÍI]|VẬT\s*LÝ|VAT\s*LI/, 'Vật lí'],
+    [/LỊCH\s*SỬ|LICH\s*SU/, 'Lịch sử'],
+    [/ĐỊA\s*L[ÍI]|ĐỊA\s*LÝ|DIA\s*LI/, 'Địa lí'],
+    [/TIN\s*HỌC|TIN\s*HOC/, 'Tin học'],
+    [/TOÁN|TOAN/, 'Toán học'],
+    [/HÓA\s*HỌC|HOA\s*HOC|HÓA|HOA/, 'Hóa học'],
+    [/SINH\s*HỌC|SINH\s*HOC|SINH/, 'Sinh học'],
+    [/ĐỊA|DIA/, 'Địa lí'],
+    [/LÝ|LY/, 'Vật lí'],
+    [/SỬ/, 'Lịch sử'],
+    [/VĂN|VAN/, 'Ngữ văn'],
+    [/ANH/, 'Tiếng Anh'],
+    [/TIN/, 'Tin học'],
+  ];
+  // Khớp đồng nghĩa theo ranh giới chữ cái (\\p{L}) để các từ viết tắt ngắn
+  // (ANH, TIN, LÝ...) không khớp nhầm giữa một từ khác (THANH, TINH...).
+  const matchSubjectBase = (text: string | null | undefined): string | null => {
+    if (!text) return null;
+    const up = text.toUpperCase().replace(/\s+/g, ' ');
+    for (const [pattern, base] of SUBJECT_SYNONYMS) {
+      const re = new RegExp(`(?<![\\p{L}])(?:${pattern.source})(?![\\p{L}])`, 'u');
+      if (re.test(up)) return base;
+    }
+    return null;
+  };
+  const GRADE_LABELLED = /(?:LỚP|KHỐI|LOP|KHOI)\s*[-:.]?\s*(1[0-2])(?!\d)/;
+  const GRADE_BARE = /(?<!\d)(1[0-2])(?!\d)/;
+  const matchGrade = (text: string | null | undefined, allowBare: boolean): string | null => {
+    if (!text) return null;
+    const up = text.toUpperCase();
+    const labelled = up.match(GRADE_LABELLED);
+    if (labelled) return labelled[1];
+    if (allowBare) {
+      const bare = up.match(GRADE_BARE);
+      if (bare) return bare[1];
+    }
+    return null;
+  };
+
   const subjectMatch = headerText.match(/M[ôo]n(?:\s*thi)?\s*[:\-]?\s*([^\n]{2,60})/i);
-  if (subjectMatch) {
-    const rawSubject = subjectMatch[1].split(/thời gian/i)[0].trim().replace(/\s+/g, ' ');
-    const up = rawSubject.toUpperCase();
-    if (/TOÁN/.test(up)) detectedSubject = 'Toán học 12';
-    else if (/VẬT\s*L[ÍI]|VẬT\s*LÝ/.test(up)) detectedSubject = 'Vật lí 12';
-    else if (/H[ÓO]A/.test(up)) detectedSubject = 'Hóa học 12';
-    else if (/SINH/.test(up)) detectedSubject = 'Sinh học 12';
-    else if (/CÔNG\s*NGHỆ/.test(up)) detectedSubject = 'Công nghệ 12';
-    else if (rawSubject.length >= 2) detectedSubject = rawSubject.charAt(0).toUpperCase() + rawSubject.slice(1);
+  const rawSubjectLine = subjectMatch
+    ? subjectMatch[1].split(/thời gian/i)[0].trim().replace(/\s+/g, ' ')
+    : null;
+  const monSnippets = (headerText.match(/M[ÔO]N[^\n]{0,60}/gi) || []).join(' • ');
+  // 300 ký tự đầu có thể chứa tên tỉnh "Thanh Hóa" trong dòng Sở GD&ĐT —
+  // loại riêng cụm này để không nhận nhầm thành môn Hóa ở nguồn cuối này.
+  const headerStart = headerText.substring(0, 300).replace(/THANH\s*H[ÓO]A/gi, ' ');
+
+  const detectedBase =
+    matchSubjectBase(rawSubjectLine) ||
+    matchSubjectBase(defaultTitle) ||
+    matchSubjectBase(monSnippets) ||
+    matchSubjectBase(headerStart);
+  const detectedGrade =
+    matchGrade(rawSubjectLine, true) ||
+    matchGrade(defaultTitle, true) ||
+    matchGrade(headerText, false) ||
+    '12';
+  let detectedSubject: string | null = null;
+  if (detectedBase) {
+    const candidate = `${detectedBase} ${detectedGrade}`;
+    if (isKnownSubject(candidate)) detectedSubject = candidate;
   }
 
   let detectedDuration: number | null = null;
@@ -792,8 +860,8 @@ export function parseCircular7991Html(
 
   return {
     title: extractedTitle,
-    subject: detectedSubject || 'Công nghệ 12',
-    grade: 'Lớp 12',
+    subject: detectedSubject || DEFAULT_SUBJECT,
+    grade: `Lớp ${detectedGrade}`,
     breakdown,
     totalPoints: 10,
     durationMinutes: detectedDuration || 50,
