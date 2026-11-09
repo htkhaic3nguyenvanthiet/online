@@ -304,6 +304,21 @@ export const CreateQuizModal: React.FC<CreateQuizModalProps> = ({
   // Vi phạm quy tắc Phần III (chỉ số thuần, 1–4 ký tự) — tính trực tiếp từ
   // danh sách câu hỏi hiện tại nên áp dụng cho mọi luồng nạp đề.
   const part3Violations = findPart3Violations(questions);
+
+  // Trọng số điểm mỗi câu theo từng phần — điểm đã đọc từ file và nằm trên
+  // từng câu hỏi; đây cũng chính là giá trị lưu vào scoringHints khi tạo đề
+  // và được phiên thi dùng để chấm. Hiển thị ở banner xem trước để Thầy đối
+  // chiếu ngay với đề gốc (VD đề Toán: Phần III = 0,5đ/câu, không phải 0,25đ).
+  const partWeights = (
+    [
+      ['part1_choice', 'Phần I'],
+      ['part2_true_false', 'Phần II'],
+      ['part3_short_answer', 'Phần III'],
+    ] as const
+  )
+    .map(([t, label]) => ({ label, points: questions.find((q) => q.partType === t)?.points }))
+    .filter((w) => w.points !== undefined);
+  const fmtPoints = (v: number) => String(v).replace('.', ',');
   const otherImportWarnings = importWarnings.filter((w) => !w.includes('Đáp án Phần III'));
 
   return (
@@ -452,6 +467,11 @@ export const CreateQuizModal: React.FC<CreateQuizModalProps> = ({
                         <span>• Phần II (Đúng/Sai): {partBreakdown.part2} câu</span>
                         <span>• Phần III (Trả lời ngắn): {partBreakdown.part3} câu</span>
                       </div>
+                      {partWeights.length > 0 && (
+                        <div className="mt-0.5 text-[11px] text-emerald-700 font-bold">
+                          • Điểm mỗi câu (đọc từ file): {partWeights.map((w) => `${w.label}: ${fmtPoints(w.points!)}đ`).join(' · ')}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <span className="text-[10px] font-mono bg-emerald-200/70 text-emerald-900 px-2 py-1 rounded-md font-bold">

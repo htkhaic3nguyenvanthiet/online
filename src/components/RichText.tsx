@@ -48,8 +48,12 @@ export function splitRichSegments(text: string): Segment[] {
     if (m.index > last) segments.push({ type: 'text', value: text.slice(last, m.index) });
     if (m[1] !== undefined) segments.push({ type: 'math', value: m[1] });
     else if (m[2] !== undefined) segments.push({ type: 'image', index: Number(m[2]) });
-    else if (m[4] !== undefined) segments.push({ type: 'sub', value: m[4] });
-    else if (m[5] !== undefined) segments.push({ type: 'sup', value: m[5] });
+    // Capture-group order in TOKEN_RE is: 1=math, 2=img, 3=sub, 4=sup.
+    // (Phase B.1: reading m[4]/m[5] here sent every ⟦sub:⟧ token to the
+    // table branch — rendering the "[Bảng số liệu không đọc được]" box in
+    // the middle of chemical formulas — and ⟦sup:⟧ tokens to <sub>.)
+    else if (m[3] !== undefined) segments.push({ type: 'sub', value: m[3] });
+    else if (m[4] !== undefined) segments.push({ type: 'sup', value: m[4] });
     else segments.push({ type: 'table' });
     last = m.index + m[0].length;
   }

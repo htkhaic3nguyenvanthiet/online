@@ -501,7 +501,9 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
                                   durationMinutes: toConfig.durationMinutes || 50,
                                   part1PointPerQuestion: 0.25,
                                   part2PointPerQuestion: 1.0,
-                                  part3PointPerQuestion: 0.25,
+                                  // Phiên cũ chưa có cấu hình: suy trọng số Phần III từ
+                                  // chính câu hỏi của đề (Toán = 0,5đ) thay vì mặc định 0,25.
+                                  part3PointPerQuestion: (toConfig.questions || []).find((q) => q.partType === 'part3_short_answer')?.points ?? 0.25,
                                   allowViewAnswerKey: true,
                                   viewAnswerMinScore: 4.0,
                                   allowAiTutorExplanation: true,
@@ -1028,7 +1030,8 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
           part1PointPerQuestion: 0.25,
           part2PointPerQuestion: 1.0,
           part2SubItemPoints: { 1: 0.1, 2: 0.25, 3: 0.5, 4: 1.0 },
-          part3PointPerQuestion: 0.25,
+          // Suy từ chính câu Phần III của đề khi phiên chưa có cấu hình (Toán = 0,5đ).
+          part3PointPerQuestion: sessionQuestions?.find((q) => q.partType === 'part3_short_answer')?.points ?? 0.25,
           part4PointPerQuestion: 0.5,
           allowViewAnswerKey: true,
           viewAnswerMinScore: 4.0,

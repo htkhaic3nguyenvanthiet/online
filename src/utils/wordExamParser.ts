@@ -136,6 +136,11 @@ function isTargetUnderlined(htmlSnippet: string, keyRegex: RegExp): boolean {
  * HTML fragment. A candidate is rejected when the marker letter is immediately
  * preceded by another letter — e.g. the "a)" in "(kg/ha)" or the "C." in "ĐC."
  * (đối chứng) are part of words, not markers.
+ * A candidate is also rejected when the letter is immediately preceded by "(":
+ * "(B)." inside an option's own text is a parenthetical symbol reference, not
+ * an option start (Vật lí Q14: option A is literally "ben (B)." and option B is
+ * "oát (W)." — accepting the parenthetical "B." truncated A to "ben (" and
+ * produced a phantom "B.. B. oát (W)." option).
  */
 function findMarkerStart(body: string, key: string, punctClass: string): number {
   // The leading run may swallow OPENING/structural tags and whitespace, but
@@ -150,7 +155,7 @@ function findMarkerStart(body: string, key: string, punctClass: string): number 
   while ((m = re.exec(body)) !== null) {
     const letterPos = m.index + m[0].length - 2;
     const prev = letterPos > 0 ? body[letterPos - 1] : '';
-    if (!/[A-Za-zÀ-ỹ]/.test(prev)) return m.index;
+    if (!/[A-Za-zÀ-ỹ]/.test(prev) && prev !== '(') return m.index;
   }
   return -1;
 }
