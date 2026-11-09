@@ -201,7 +201,7 @@ app.use('/api', (req, res, next) => {
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    appName: 'Test Online - THPT Mang Thít',
+    appName: 'Test Online - Hệ Thống Khảo Thí Trực Tuyến',
     author: 'Hồ Tấn Khải',
     hasGeminiKey: Boolean(apiKey),
     timestamp: new Date().toISOString(),

@@ -180,7 +180,12 @@ export default function App() {
         if (cloudData.quizzes && cloudData.quizzes.length > 0) {
           setQuizzes(cloudData.quizzes);
         }
-        if (cloudData.classrooms && cloudData.classrooms.length > 0) setClassrooms(cloudData.classrooms);
+        if (cloudData.classrooms && cloudData.classrooms.length > 0) {
+          const cleanClassrooms = cloudData.classrooms.filter(
+            (c) => c.code !== '12A5MT' && c.code !== 'CNNN25' && c.code !== 'CN12TN' && !c.name.includes('THPT MANG THÍT')
+          );
+          setClassrooms(cleanClassrooms);
+        }
         if (cloudData.sessions && cloudData.sessions.length > 0) {
           setSessions(cloudData.sessions);
         }
@@ -709,7 +714,7 @@ export default function App() {
                       <span className="font-semibold text-slate-600 flex items-center gap-2">
                         <School className="w-4 h-4 text-teal-600" /> Đơn vị công tác:
                       </span>
-                      <span className="font-bold text-slate-900">Trường THPT Mang Thít - Vĩnh Long</span>
+                      <span className="font-bold text-slate-900">Hệ Thống Trực Tuyến GDPT</span>
                     </div>
 
                     <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">

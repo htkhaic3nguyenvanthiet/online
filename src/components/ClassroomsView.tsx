@@ -353,7 +353,7 @@ export const ClassroomsView: React.FC<ClassroomsViewProps> = ({
                 <h3 className="font-extrabold text-base text-slate-900">
                   Thẻ Dự Thi & Mã QR Đăng Nhập Tự Động: {selectedClass.name}
                 </h3>
-                <p className="text-xs text-slate-500">Trường THPT Mang Thít • Tác giả: Hồ Tấn Khải</p>
+                <p className="text-xs text-slate-500">Hệ Thống Khảo Thí Trực Tuyến Tốc Độ Cao</p>
               </div>
               <div className="flex gap-2">
                 <button
@@ -375,7 +375,7 @@ export const ClassroomsView: React.FC<ClassroomsViewProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 overflow-y-auto p-2 flex-1">
               {selectedClass.students.map((st) => (
                 <div key={st.id} className="border-2 border-dashed border-teal-300 rounded-2xl p-3 bg-teal-50/30 text-center space-y-1.5">
-                  <div className="text-[10px] font-bold text-teal-800 uppercase tracking-tight">THPT MANG THÍT</div>
+                  <div className="text-[10px] font-bold text-teal-800 uppercase tracking-tight">THẺ DỰ THI TRỰC TUYẾN</div>
                   <div className="font-black text-slate-900 text-xs truncate">{st.fullName}</div>
                   <div className="text-[11px] font-mono font-bold text-teal-700 bg-white border border-teal-200 rounded-md py-0.5">
                     SBD: {st.studentCode}

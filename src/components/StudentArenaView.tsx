@@ -591,7 +591,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
     const sub = realtimeEngine.submitStudentExam({
       sessionId: resolvedSessionId,
       studentName: studentName || 'Học sinh ẩn danh',
-      studentInfo: studentInfo || 'Lớp 12A5',
+      studentInfo: studentInfo || 'Thí sinh tự do',
       score: calculatedScore,
       totalPoints: resolvedTotalPoints,
       correctAnswersCount: correctCount,
@@ -813,7 +813,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                   type="text"
                   value={studentInfo}
                   onChange={(e) => setStudentInfo(e.target.value)}
-                  placeholder="Ví dụ: 12A5 - SBD: 052"
+                  placeholder="Ví dụ: Lớp 12A1 - SBD: 052"
                   className="w-full px-3.5 py-2.5 bg-white text-slate-900 font-bold rounded-xl border-2 border-teal-400/60 focus:outline-none focus:ring-2 focus:ring-teal-400 shadow-inner"
                 />
               </div>
@@ -901,7 +901,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                 required
                 value={studentInfo}
                 onChange={(e) => setStudentInfo(e.target.value)}
-                placeholder="Ví dụ: 12A5 - SBD: 052"
+                placeholder="Ví dụ: Lớp 12A1 - SBD: 052"
                 className="w-full px-4 py-2.5 bg-white text-slate-800 rounded-2xl font-bold border-2 border-teal-400/60 focus:outline-none focus:border-teal-300 text-xs shadow-inner"
               />
             </div>

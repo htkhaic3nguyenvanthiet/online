@@ -55,7 +55,7 @@ export const Live500StressTestMonitor: React.FC<Live500StressTestMonitorProps> =
             </h1>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Tác giả: Hồ Tấn Khải - Trường THPT Mang Thít • Khả năng chịu tải đồng thời 500 thí sinh không nghẽn mạng • Tự động trả kết quả thời gian thực
+            Hệ thống khảo thí số tốc độ cao • Khả năng chịu tải đồng thời 500 thí sinh không nghẽn mạng • Tự động trả kết quả thời gian thực
           </p>
         </div>
 

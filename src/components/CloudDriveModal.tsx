@@ -417,7 +417,7 @@ export const CloudDriveModal: React.FC<CloudDriveModalProps> = ({
         <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-500">
           <div className="flex items-center gap-1.5 font-mono">
             <ShieldCheck className="w-4 h-4 text-teal-600" />
-            <span>Mã hóa bảo mật • THPT Mang Thít (Hồ Tấn Khải)</span>
+            <span>Mã hóa bảo mật • Hệ Thống Khảo Thí Số 256-bit</span>
           </div>
           <button
             onClick={onClose}

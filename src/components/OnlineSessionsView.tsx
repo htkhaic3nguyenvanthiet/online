@@ -303,9 +303,11 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
             className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-teal-500 focus:bg-white font-medium"
           >
             <option value="all">Tất cả lớp học</option>
-            <option value="12a5">Lớp 12A5</option>
-            <option value="cnnn">Ôn thi tốt nghiệp CNNN</option>
-            <option value="cn12">Ôn thi tốt nghiệp Công nghệ 12</option>
+            {classrooms.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
           </select>
         </div>
 
