@@ -82,59 +82,95 @@ export default function App() {
         setIsDirectStudentMode(true);
         setAppMode('student');
 
-        // Always attempt to fetch live exam from server so student gets newly uploaded questions immediately!
-        cloudStorageService.fetchExamFromServer(examParam).then((res) => {
-          if (res.found && res.quiz) {
-            if (res.quiz.questions && res.quiz.questions.length > 0) {
-              setQuizzes((prev) => {
-                const exists = prev.some((q) => q.id === res.quiz?.id);
-                return exists ? prev.map((q) => (q.id === res.quiz?.id ? res.quiz! : q)) : [res.quiz!, ...prev];
-              });
-            }
-            if (res.session) {
-              setActiveStudentExamSession(res.session);
-              setActiveStudentExamTitle(res.session.title);
-            } else {
-              setActiveStudentExamTitle(res.quiz.title);
-            }
-          }
-        });
-
-        // 1. Look for matching session in local state
-        const matchedSess = sessions.find(
-          (s) => s.id === examParam || s.quizId === examParam
-        );
-        if (matchedSess) {
-          setActiveStudentExamSession(matchedSess);
-          setActiveStudentExamTitle(matchedSess.title);
-          return;
-        }
-
-        // 2. Look for matching quiz in local state
-        const matchedQuiz = quizzes.find(
+        // Immediate initial setup from local state if available
+        const localSess = sessions.find((s) => s.id === examParam || s.quizId === examParam);
+        const localQuiz = quizzes.find(
           (q) =>
             q.id === examParam ||
             q.title.toLowerCase() === examParam.toLowerCase() ||
             examParam.startsWith(q.id.slice(0, 6))
         );
-        if (matchedQuiz) {
-          setActiveStudentExamTitle(matchedQuiz.title);
+
+        if (localSess) {
+          setActiveStudentExamSession(localSess);
+          setActiveStudentExamTitle(localSess.title);
+        } else if (localQuiz) {
+          setActiveStudentExamTitle(localQuiz.title);
           setActiveStudentExamSession({
-            id: 'sess-' + matchedQuiz.id,
-            title: matchedQuiz.title,
-            quizId: matchedQuiz.id,
+            id: 'sess-' + localQuiz.id,
+            title: localQuiz.title,
+            quizId: localQuiz.id,
             className: 'Khối 12',
             startTime: 'Vừa tạo',
             endTime: 'Sau 30 ngày',
             status: 'active',
-            shareUrl: getStudentExamShareUrl(matchedQuiz.id),
+            shareUrl: getStudentExamShareUrl(localQuiz.id),
             allowedAttempts: 5,
-            durationMinutes: matchedQuiz.durationMinutes || 45,
+            durationMinutes: localQuiz.durationMinutes || 50,
             totalSubmissions: 0,
             maxSlots: 500,
-            isArenaMode: matchedQuiz.isInteractive
+            isArenaMode: localQuiz.isInteractive,
+            questions: localQuiz.questions
           });
         }
+
+        // ALWAYS fetch live exam & questions from server to ensure 100% updated teacher questions!
+        cloudStorageService.fetchExamFromServer(examParam).then((res) => {
+          if (res.found) {
+            const fetchedQuestions = (res.questions && res.questions.length > 0)
+              ? res.questions
+              : (res.session?.questions || res.quiz?.questions);
+
+            if (res.session) {
+              const updatedSess: ExamSession = {
+                ...res.session,
+                questions: fetchedQuestions || res.session.questions
+              };
+              setActiveStudentExamSession(updatedSess);
+              setActiveStudentExamTitle(updatedSess.title);
+              setSessions((prev) => {
+                const idx = prev.findIndex((s) => s.id === updatedSess.id);
+                if (idx >= 0) {
+                  const copy = [...prev];
+                  copy[idx] = updatedSess;
+                  return copy;
+                }
+                return [updatedSess, ...prev];
+              });
+            } else if (res.quiz) {
+              const updatedSess: ExamSession = {
+                id: 'sess-' + res.quiz.id,
+                title: res.quiz.title,
+                quizId: res.quiz.id,
+                className: 'Khối 12',
+                startTime: 'Vừa tạo',
+                endTime: 'Sau 30 ngày',
+                status: 'active',
+                shareUrl: getStudentExamShareUrl(res.quiz.id),
+                allowedAttempts: 5,
+                durationMinutes: res.quiz.durationMinutes || 50,
+                totalSubmissions: 0,
+                maxSlots: 500,
+                isArenaMode: res.quiz.isInteractive,
+                questions: fetchedQuestions || res.quiz.questions
+              };
+              setActiveStudentExamSession(updatedSess);
+              setActiveStudentExamTitle(res.quiz.title);
+            }
+
+            if (res.quiz && fetchedQuestions && fetchedQuestions.length > 0) {
+              setQuizzes((prev) => {
+                const idx = prev.findIndex((q) => q.id === res.quiz?.id);
+                if (idx >= 0) {
+                  const copy = [...prev];
+                  copy[idx] = { ...res.quiz!, questions: fetchedQuestions };
+                  return copy;
+                }
+                return [{ ...res.quiz!, questions: fetchedQuestions }, ...prev];
+              });
+            }
+          }
+        });
       }
     };
 
@@ -452,7 +488,11 @@ export default function App() {
                     soundEffects.playCorrect();
                   }}
                   onDeleteQuiz={(quizId) => {
-                    setQuizzes((prev) => prev.filter((q) => q.id !== quizId));
+                    const updatedQuizzes = quizzes.filter((q) => q.id !== quizId);
+                    const updatedSessions = sessions.filter((s) => s.quizId !== quizId);
+                    setQuizzes(updatedQuizzes);
+                    setSessions(updatedSessions);
+                    triggerAutoBackup(updatedQuizzes, classrooms, updatedSessions);
                   }}
                 />
               )}
@@ -476,18 +516,29 @@ export default function App() {
                     setAppMode('student');
                   }}
                   onToggleSessionStatus={(sessId) => {
-                    setSessions((prev) =>
-                      prev.map((s) => (s.id === sessId ? { ...s, status: s.status === 'active' ? 'completed' : 'active' } : s))
-                    );
+                    const updated = sessions.map((s) => (s.id === sessId ? { ...s, status: (s.status === 'active' ? 'completed' : 'active') as 'active' | 'completed' } : s));
+                    setSessions(updated);
+                    triggerAutoBackup(quizzes, classrooms, updated);
                   }}
                   onDeleteSession={(sessId) => {
-                    setSessions((prev) => prev.filter((s) => s.id !== sessId));
+                    const updatedSessions = sessions.filter((s) => s.id !== sessId);
+                    setSessions(updatedSessions);
+                    try {
+                      localStorage.removeItem(`testonline_draft_${sessId}`);
+                    } catch {
+                      // ignore
+                    }
+                    triggerAutoBackup(quizzes, classrooms, updatedSessions);
                   }}
                   onAddNewSession={(newSess) => {
-                    setSessions((prev) => [newSess, ...prev]);
+                    const updatedSessions = [newSess, ...sessions];
+                    setSessions(updatedSessions);
+                    triggerAutoBackup(quizzes, classrooms, updatedSessions);
                   }}
                   onUpdateSession={(updatedSess) => {
-                    setSessions((prev) => prev.map((s) => (s.id === updatedSess.id ? updatedSess : s)));
+                    const updatedSessions = sessions.map((s) => (s.id === updatedSess.id ? updatedSess : s));
+                    setSessions(updatedSessions);
+                    triggerAutoBackup(quizzes, classrooms, updatedSessions);
                   }}
                 />
               )}

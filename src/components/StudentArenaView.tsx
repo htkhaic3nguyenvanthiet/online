@@ -113,11 +113,11 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
   const [attemptNumber, setAttemptNumber] = useState(1);
 
   const baseTeacherQuestions = useMemo(() => {
-    if (session?.questions && session.questions.length > 0) {
-      return session.questions;
-    }
     if (customQuestions && customQuestions.length > 0) {
       return customQuestions;
+    }
+    if (session?.questions && session.questions.length > 0) {
+      return session.questions;
     }
     return sampleQuestions;
   }, [session, customQuestions]);
@@ -244,7 +244,8 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
       const saved = localStorage.getItem(`testonline_draft_${resolvedSessionId}`);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed && parsed.sessionId === resolvedSessionId && Date.now() - parsed.timestamp < 3600000 * 2) {
+        const isSameExam = parsed && parsed.sessionId === resolvedSessionId && parsed.quizTitle === resolvedTitle;
+        if (isSameExam && Date.now() - parsed.timestamp < 3600000 * 2) {
           const elapsedSec = Math.floor((Date.now() - parsed.timestamp) / 1000);
           const rem = Math.max(0, (parsed.secondsRemaining || 0) - elapsedSec);
 
@@ -259,6 +260,9 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
             setSecondsRemaining(rem);
             setStep('testing'); // Resume live test after phone call or page refresh seamlessly!
           }
+        } else {
+          // Exam was modified or re-published by teacher -> clear stale draft!
+          localStorage.removeItem(`testonline_draft_${resolvedSessionId}`);
         }
       }
     } catch {

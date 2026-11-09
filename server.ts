@@ -59,6 +59,31 @@ function getCloudData(syncKey?: string) {
     }
   }
 
+  // Fallback: search most recently modified file in sync_keys directory
+  try {
+    if (fs.existsSync(SYNC_KEYS_DIR)) {
+      const files = fs.readdirSync(SYNC_KEYS_DIR).filter((f) => f.endsWith('.json'));
+      if (files.length > 0) {
+        let newestFile = '';
+        let newestMtime = 0;
+        for (const file of files) {
+          const filePath = path.join(SYNC_KEYS_DIR, file);
+          const stat = fs.statSync(filePath);
+          if (stat.mtimeMs > newestMtime) {
+            newestMtime = stat.mtimeMs;
+            newestFile = filePath;
+          }
+        }
+        if (newestFile) {
+          const content = fs.readFileSync(newestFile, 'utf-8');
+          return JSON.parse(content);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Error finding newest sync key file:', err);
+  }
+
   // Fallback to default cloud_store.json
   if (fs.existsSync(CLOUD_STORE_FILE)) {
     try {
@@ -140,27 +165,37 @@ app.get('/api/exam/:id', (req, res) => {
   const examId = req.params.id;
   if (!examId) return res.status(400).json({ success: false, error: 'Thiếu mã đề/phiên thi' });
 
-  // Read latest server state
-  const data = getCloudData();
+  const syncKey = (req.query.syncKey as string) || (req.query.key as string);
+  const data = getCloudData(syncKey);
   if (!data) {
     return res.json({ success: false, error: 'Chưa có dữ liệu đề thi trên máy chủ', questions: [] });
   }
 
   // Look for matching session
-  const session = data.sessions?.find((s: any) => s.id === examId || s.quizId === examId);
+  const session = data.sessions?.find(
+    (s: any) =>
+      s.id === examId ||
+      s.quizId === examId ||
+      (s.shareUrl && s.shareUrl.includes(examId))
+  );
+
   // Look for matching quiz
   const quiz = data.quizzes?.find(
     (q: any) =>
       q.id === examId ||
       (session && q.id === session.quizId) ||
       q.id?.slice(0, 6) === examId ||
-      q.title === examId ||
+      q.title?.toLowerCase() === examId.toLowerCase() ||
       examId.startsWith(q.id?.slice(0, 6))
   );
 
-  const questions = (quiz?.questions && quiz.questions.length > 0)
-    ? quiz.questions
-    : [];
+  // Prioritize session.questions if attached, otherwise quiz.questions
+  const questions =
+    (session?.questions && session.questions.length > 0)
+      ? session.questions
+      : (quiz?.questions && quiz.questions.length > 0)
+      ? quiz.questions
+      : [];
 
   return res.json({
     success: true,
@@ -168,7 +203,7 @@ app.get('/api/exam/:id', (req, res) => {
     session,
     quiz,
     questions,
-    found: Boolean(quiz || session)
+    found: Boolean((session || quiz) && questions.length > 0)
   });
 });
 
