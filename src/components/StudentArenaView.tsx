@@ -27,7 +27,6 @@ import {
   FileCheck
 } from 'lucide-react';
 import { OptionKey, Question, ExamSession, StudentSubmission, CheatLog } from '../types/quiz';
-import { sampleQuestions } from '../data/mockData';
 import { soundEffects } from '../utils/soundEffects';
 import { realtimeEngine } from '../services/realtimeEngine';
 import { aiService } from '../services/aiService';
@@ -70,7 +69,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
   const [step, setStep] = useState<'landing' | 'info-modal' | 'testing' | 'result'>('landing');
 
   // Session config with defaults
-  const resolvedSessionId = session?.id || '4975878';
+  const resolvedSessionId = session?.id || '';
   const resolvedTitle = session?.title || quizTitle;
   const resolvedDurationMinutes = session?.durationMinutes || 45;
   const resolvedAllowedAttempts = session?.allowedAttempts ?? 3; // 0 = unlimited
@@ -119,7 +118,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
     if (session?.questions && session.questions.length > 0) {
       return session.questions;
     }
-    return sampleQuestions;
+    return [];
   }, [session, customQuestions]);
 
   const questions = useMemo(() => {

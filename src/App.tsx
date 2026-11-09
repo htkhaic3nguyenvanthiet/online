@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ActiveTab, Classroom, ConcurrentSystemMetrics, ExamSession, Quiz, StudentSubmission, Question } from './types/quiz';
-import { mockQuizzes, mockClassrooms, mockSessions, sampleQuestions } from './data/mockData';
+import { mockClassrooms, mockSessions } from './data/mockData';
 import { realtimeEngine } from './services/realtimeEngine';
 import { soundEffects } from './utils/soundEffects';
 import { cloudStorageService } from './services/cloudStorageService';
@@ -24,9 +24,9 @@ import { Award, School, UserCheck, ShieldCheck, Cloud, Sparkles } from 'lucide-r
 export default function App() {
   const [appMode, setAppMode] = useState<'teacher' | 'student'>('teacher');
   const [currentTab, setCurrentTab] = useState<ActiveTab>('dashboard');
-  const [selectedSummarySessionId, setSelectedSummarySessionId] = useState<string>('4975878');
+  const [selectedSummarySessionId, setSelectedSummarySessionId] = useState<string>('');
 
-  const [quizzes, setQuizzes] = useState<Quiz[]>(mockQuizzes);
+  const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [classrooms, setClassrooms] = useState<Classroom[]>(mockClassrooms);
   const [sessions, setSessions] = useState<ExamSession[]>(mockSessions);
   const [submissions, setSubmissions] = useState<StudentSubmission[]>(realtimeEngine.getSubmissions());
@@ -178,25 +178,11 @@ export default function App() {
     cloudStorageService.fetchFromCloud(currentSyncKey).then((cloudData) => {
       if (cloudData) {
         if (cloudData.quizzes && cloudData.quizzes.length > 0) {
-          const filteredQuizzes = cloudData.quizzes.filter(
-            (q) =>
-              q.id === 'quiz-cn12' ||
-              (!q.id.startsWith('quiz-sinh-2025') &&
-                !q.id.startsWith('quiz-trong-trot') &&
-                !q.id.startsWith('quiz-dat-trong') &&
-                !q.id.startsWith('quiz-phan-bon') &&
-                !q.id.startsWith('sq-imp'))
-          );
-          if (filteredQuizzes.length > 0) setQuizzes(filteredQuizzes);
+          setQuizzes(cloudData.quizzes);
         }
         if (cloudData.classrooms && cloudData.classrooms.length > 0) setClassrooms(cloudData.classrooms);
         if (cloudData.sessions && cloudData.sessions.length > 0) {
-          const filteredSessions = cloudData.sessions.filter(
-            (s) =>
-              s.id === '4975878' ||
-              (!s.id.startsWith('sess-de-cuong') && !s.id.startsWith('sess-on-tap'))
-          );
-          if (filteredSessions.length > 0) setSessions(filteredSessions);
+          setSessions(cloudData.sessions);
         }
       }
     });
@@ -394,9 +380,9 @@ export default function App() {
       return [];
     }
 
-    // 6. Teacher preview fallback only
+    // 6. Teacher preview fallback
     const firstWithQ = quizzes.find((quiz) => quiz.questions && quiz.questions.length > 0);
-    return firstWithQ?.questions || sampleQuestions;
+    return firstWithQ?.questions || [];
   };
 
   // ISOLATED DIRECT STUDENT MODE (When student accesses via shared link)

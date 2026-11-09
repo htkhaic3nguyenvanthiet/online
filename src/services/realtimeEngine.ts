@@ -237,7 +237,7 @@ class RealtimeEngine {
 
     const sub: StudentSubmission = {
       id: 'sub-sim-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
-      sessionId: '4975878',
+      sessionId: '',
       studentName,
       studentInfo,
       score,
