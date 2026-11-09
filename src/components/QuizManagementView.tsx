@@ -16,10 +16,19 @@ import {
   Upload,
   Download,
   Copy,
-  Edit3
+  Edit3,
+  Shuffle,
+  X,
+  ClipboardCopy
 } from 'lucide-react';
 import { Quiz } from '../types/quiz';
 import { soundEffects } from '../utils/soundEffects';
+import {
+  ShuffledVariantResult,
+  buildAnswerKeyText,
+  extractBaseCode,
+  generateShuffledVariants
+} from '../utils/shuffleEngine';
 
 interface QuizManagementViewProps {
   quizzes: Quiz[];
@@ -29,6 +38,7 @@ interface QuizManagementViewProps {
   onEditQuiz: (quiz: Quiz) => void;
   onDuplicateQuiz: (quiz: Quiz) => void;
   onDeleteQuiz: (quizId: string) => void;
+  onAddShuffledVariants?: (variants: Quiz[]) => void;
 }
 
 export const QuizManagementView: React.FC<QuizManagementViewProps> = ({
@@ -38,10 +48,77 @@ export const QuizManagementView: React.FC<QuizManagementViewProps> = ({
   onPreviewQuiz,
   onEditQuiz,
   onDuplicateQuiz,
-  onDeleteQuiz
+  onDeleteQuiz,
+  onAddShuffledVariants
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+
+  // ---- Trộn đề (Phase C) ----
+  const [shuffleTarget, setShuffleTarget] = useState<Quiz | null>(null);
+  const [shuffleCount, setShuffleCount] = useState(4);
+  const [shuffleBaseCode, setShuffleBaseCode] = useState(101);
+  const [shuffleOptPart1Questions, setShuffleOptPart1Questions] = useState(true);
+  const [shuffleOptOptions, setShuffleOptOptions] = useState(true);
+  const [shuffleOptPart2Items, setShuffleOptPart2Items] = useState(true);
+  const [shuffleOptPart3Questions, setShuffleOptPart3Questions] = useState(false);
+  const [shuffleResults, setShuffleResults] = useState<ShuffledVariantResult[] | null>(null);
+  const [copiedKeyTable, setCopiedKeyTable] = useState(false);
+
+  const openShuffleModal = (quiz: Quiz) => {
+    setShuffleTarget(quiz);
+    setShuffleCount(4);
+    setShuffleBaseCode(extractBaseCode(quiz));
+    setShuffleOptPart1Questions(true);
+    setShuffleOptOptions(true);
+    setShuffleOptPart2Items(true);
+    setShuffleOptPart3Questions(false);
+    setShuffleResults(null);
+    setCopiedKeyTable(false);
+  };
+
+  const closeShuffleModal = () => {
+    setShuffleTarget(null);
+    setShuffleResults(null);
+  };
+
+  const handleRunShuffle = () => {
+    if (!shuffleTarget || !onAddShuffledVariants) return;
+    soundEffects.playClick();
+    const results = generateShuffledVariants(shuffleTarget, {
+      count: shuffleCount,
+      baseCode: shuffleBaseCode,
+      shufflePart1Questions: shuffleOptPart1Questions,
+      shuffleOptions: shuffleOptOptions,
+      shufflePart2Items: shuffleOptPart2Items,
+      shufflePart3Questions: shuffleOptPart3Questions
+    });
+    onAddShuffledVariants(results.map((r) => r.quiz));
+    setShuffleResults(results);
+    soundEffects.playCorrect();
+  };
+
+  const handleCopyKeyTable = async () => {
+    if (!shuffleTarget || !shuffleResults) return;
+    const text = buildAnswerKeyText(shuffleTarget.title, shuffleResults);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedKeyTable(true);
+    } catch {
+      // Dự phòng cho trình duyệt chặn Clipboard API
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+        setCopiedKeyTable(true);
+      } catch {
+        // ignore
+      }
+      document.body.removeChild(ta);
+    }
+  };
   const [customFolders, setCustomFolders] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('testonline_custom_folders');
@@ -225,6 +302,18 @@ ${q.options ? q.options.map(o => `  ${o.key}. ${o.text}`).join('\n') : q.subItem
                   {item.subject}
                 </span>
                 <div className="flex items-center gap-1">
+                  {onAddShuffledVariants && (
+                    <button
+                      onClick={() => {
+                        soundEffects.playClick();
+                        openShuffleModal(item);
+                      }}
+                      className="p-1 text-slate-400 hover:text-purple-600 rounded-md cursor-pointer"
+                      title="Trộn đề — sinh nhiều mã đề"
+                    >
+                      <Shuffle className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       soundEffects.playClick();
@@ -449,6 +538,19 @@ ${q.options ? q.options.map(o => `  ${o.key}. ${o.text}`).join('\n') : q.subItem
                         <span>Giao đề</span>
                       </button>
 
+                      {onAddShuffledVariants && (
+                        <button
+                          onClick={() => {
+                            soundEffects.playClick();
+                            openShuffleModal(quiz);
+                          }}
+                          className="p-1.5 text-slate-600 hover:text-purple-700 hover:bg-slate-100 rounded-lg cursor-pointer"
+                          title="Trộn đề — sinh nhiều mã đề từ đề này"
+                        >
+                          <Shuffle className="w-4 h-4" />
+                        </button>
+                      )}
+
                       <button
                         onClick={() => {
                           soundEffects.playClick();
@@ -592,6 +694,179 @@ ${q.options ? q.options.map(o => `  ${o.key}. ${o.text}`).join('\n') : q.subItem
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Shuffle (Trộn đề) Modal */}
+      {shuffleTarget && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-extrabold text-base text-slate-900 flex items-center gap-2">
+                  <Shuffle className="w-5 h-5 text-purple-600" />
+                  Trộn đề — sinh nhiều mã đề
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-1 font-medium" title={shuffleTarget.title}>
+                  Đề gốc: <span className="font-bold text-slate-700">{shuffleTarget.title}</span>
+                </p>
+              </div>
+              <button
+                onClick={closeShuffleModal}
+                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg cursor-pointer"
+                title="Đóng"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {!shuffleResults ? (
+              <>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <label className="block text-slate-700 mb-1 font-bold">Số lượng mã đề (1–12):</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={12}
+                      value={shuffleCount}
+                      onChange={(e) => setShuffleCount(Math.max(1, Math.min(12, parseInt(e.target.value || '1', 10) || 1)))}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:border-purple-500 font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 mb-1 font-bold">Mã đề bắt đầu:</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={shuffleBaseCode}
+                      onChange={(e) => setShuffleBaseCode(Math.max(1, parseInt(e.target.value || '101', 10) || 101))}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:border-purple-500 font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2 text-xs font-semibold text-slate-700">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={shuffleOptPart1Questions}
+                      onChange={(e) => setShuffleOptPart1Questions(e.target.checked)}
+                      className="w-4 h-4 accent-purple-600"
+                    />
+                    Trộn thứ tự câu hỏi Phần I
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={shuffleOptOptions}
+                      onChange={(e) => setShuffleOptOptions(e.target.checked)}
+                      className="w-4 h-4 accent-purple-600"
+                    />
+                    Trộn phương án A–D trong mỗi câu Phần I
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={shuffleOptPart2Items}
+                      onChange={(e) => setShuffleOptPart2Items(e.target.checked)}
+                      className="w-4 h-4 accent-purple-600"
+                    />
+                    Trộn các ý a–d trong mỗi câu Phần II (thứ tự câu Phần II giữ nguyên)
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={shuffleOptPart3Questions}
+                      onChange={(e) => setShuffleOptPart3Questions(e.target.checked)}
+                      className="w-4 h-4 accent-purple-600"
+                    />
+                    Trộn thứ tự câu hỏi Phần III
+                  </label>
+                </div>
+
+                <p className="text-[11px] text-teal-800 bg-teal-50 border border-teal-200 rounded-xl px-3 py-2 font-medium">
+                  Đáp án sẽ tự bám theo nội dung: công thức, hình ảnh và bảng số liệu nằm trong từng
+                  câu hỏi nên luôn đi cùng câu khi trộn — đáp án đúng được tính lại theo vị trí mới
+                  của phương án/ý đúng.
+                </p>
+
+                <div className="flex justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={closeShuffleModal}
+                    className="btn-3d btn-3d-slate px-3.5 py-1.5 text-xs rounded-xl cursor-pointer"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRunShuffle}
+                    className="btn-3d btn-3d-teal px-4 py-1.5 text-xs rounded-xl font-bold cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Shuffle className="w-3.5 h-3.5" />
+                    Trộn & tạo {shuffleCount} mã đề
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2">
+                  <CheckCircle className="w-4 h-4" />
+                  Đã tạo {shuffleResults.length} mã đề trong cùng thư mục của đề gốc. Mỗi mã đề là một đề thường — giao online như bình thường.
+                </div>
+
+                <div className="space-y-2.5">
+                  {shuffleResults.map((r) => (
+                    <div key={r.quiz.id} className="border border-slate-200 rounded-2xl px-3.5 py-2.5 text-xs space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-extrabold text-slate-900">Mã {r.code}</span>
+                        <span className="text-[10px] font-mono bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-md">
+                          A {r.distribution.A} · B {r.distribution.B} · C {r.distribution.C} · D {r.distribution.D}
+                        </span>
+                      </div>
+                      {r.part1Key.length > 0 && (
+                        <div className="font-mono text-[11px] text-slate-700 break-words">
+                          <span className="font-sans font-bold text-slate-500">Phần I: </span>
+                          {r.part1Key.map((k, i) => `${i + 1}${k}`).join('  ')}
+                        </div>
+                      )}
+                      {r.part2TrueLetters.length > 0 && (
+                        <div className="text-[11px] text-slate-700">
+                          <span className="font-bold text-slate-500">Phần II (ý đúng): </span>
+                          {r.part2TrueLetters.map((letters, i) => `Câu ${i + 1}: ${letters.join(',') || '—'}`).join(' · ')}
+                        </div>
+                      )}
+                      {r.part3Key.length > 0 && (
+                        <div className="text-[11px] text-slate-700">
+                          <span className="font-bold text-slate-500">Phần III: </span>
+                          {r.part3Key.join(' · ')}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleCopyKeyTable}
+                    className="btn-3d btn-3d-slate px-3.5 py-1.5 text-xs rounded-xl cursor-pointer flex items-center gap-1.5 font-bold"
+                  >
+                    <ClipboardCopy className="w-3.5 h-3.5" />
+                    {copiedKeyTable ? 'Đã sao chép ✓' : 'Sao chép bảng đáp án'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={closeShuffleModal}
+                    className="btn-3d btn-3d-teal px-4 py-1.5 text-xs rounded-xl font-bold cursor-pointer"
+                  >
+                    Xong
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

@@ -61,6 +61,16 @@ export interface Quiz {
   folder?: string;
   isInteractive?: boolean;
   questions: Question[];
+  // Siêu dữ liệu trộn đề (Phase C): chỉ có trên các đề là biến thể đã trộn.
+  // seed để tái lập đúng biến thể này; distribution là phân bố đáp án đúng
+  // Phần I (A/B/C/D) của biến thể.
+  shuffleMeta?: {
+    seed: number;
+    baseCode: number;
+    code: number;
+    sourceQuizId: string;
+    distribution: { A: number; B: number; C: number; D: number };
+  };
   // Trọng số điểm từng phần đọc được từ chính file Word khi import (Phase B) —
   // dùng làm mặc định khi tạo phiên thi thay cho hằng số 0.25 ghi cứng.
   scoringHints?: {

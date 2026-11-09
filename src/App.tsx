@@ -667,6 +667,13 @@ export default function App() {
                     triggerAutoBackup(updatedQuizzes, classrooms, sessions);
                     soundEffects.playCorrect();
                   }}
+                  onAddShuffledVariants={(variants) => {
+                    if (!variants || variants.length === 0) return;
+                    const updatedQuizzes = [...variants, ...quizzes];
+                    setQuizzes(updatedQuizzes);
+                    triggerAutoBackup(updatedQuizzes, classrooms, sessions);
+                    soundEffects.playCorrect();
+                  }}
                   onDeleteQuiz={(quizId) => {
                     const updatedQuizzes = quizzes.filter((q) => q.id !== quizId);
                     const updatedSessions = sessions.filter((s) => s.quizId !== quizId);
