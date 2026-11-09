@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Send,
   Search,
@@ -39,7 +39,7 @@ import {
 } from 'lucide-react';
 import { ExamSession, Quiz, AntiCheatConfig, StudentSubmission, Classroom, Question } from '../types/quiz';
 import { soundEffects } from '../utils/soundEffects';
-import { getStudentExamShareUrl } from '../utils/urlHelper';
+import { getStudentExamShareUrl, getStudentExamEmbeddedShareUrl } from '../utils/urlHelper';
 import { cloudStorageService } from '../services/cloudStorageService';
 
 interface OnlineSessionsViewProps {
@@ -78,6 +78,27 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('all');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [activeQrModal, setActiveQrModal] = useState<ExamSession | null>(null);
+
+  // Link thi chứa sẵn toàn bộ đề (dùng cho modal QR) — học sinh quét/mở link
+  // là vào đúng đề trên mọi thiết bị, không phụ thuộc máy chủ.
+  const [qrShareUrl, setQrShareUrl] = useState<string>('');
+  useEffect(() => {
+    if (!activeQrModal) {
+      setQrShareUrl('');
+      return;
+    }
+    let cancelled = false;
+    const linkedQuiz = quizzes.find((q) => q.id === activeQrModal.quizId);
+    const questions = (activeQrModal.questions && activeQrModal.questions.length > 0)
+      ? activeQrModal.questions
+      : (linkedQuiz?.questions || []);
+    getStudentExamEmbeddedShareUrl(activeQrModal, linkedQuiz, questions).then((url) => {
+      if (!cancelled) setQrShareUrl(url);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeQrModal]);
 
   // Dedicated Session Statistics & Results Modal
   const [activeStatsSession, setActiveStatsSession] = useState<ExamSession | null>(null);
@@ -119,16 +140,16 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
     return matchesSearch && matchesStatus;
   });
 
-  const getSessionShareText = (session: ExamSession) => {
+  const getSessionShareText = (session: ExamSession, shareLink?: string) => {
     const linkedQuiz = quizzes.find((q) => q.id === session.quizId || q.title === session.title);
     const subjectName = linkedQuiz?.subject || 'Công nghệ 12';
     const durationMins = session.durationMinutes || 50;
     const realQCount = session.questionCount || (linkedQuiz?.questions && linkedQuiz.questions.length > 0 ? linkedQuiz.questions.length : linkedQuiz?.questionCount) || 28;
-    const shareLink = getStudentExamShareUrl(session.id);
-    return `📌 BÀI KIỂM TRA TRỰC TUYẾN\n📘 Môn học: ${subjectName}\n📝 Bài kiểm tra: ${session.title}\n⏱ Thời gian làm bài: ${durationMins} phút (${realQCount} câu hỏi)\n🏫 Đối tượng: ${session.className || 'Toàn bộ học sinh'}\n👉 Học sinh bấm vào liên kết bên dưới để vào thi ngay:\n${shareLink}`;
+    const link = shareLink || getStudentExamShareUrl(session.id);
+    return `📌 BÀI KIỂM TRA TRỰC TUYẾN\n📘 Môn học: ${subjectName}\n📝 Bài kiểm tra: ${session.title}\n⏱ Thời gian làm bài: ${durationMins} phút (${realQCount} câu hỏi)\n🏫 Đối tượng: ${session.className || 'Toàn bộ học sinh'}\n👉 Học sinh bấm vào liên kết bên dưới để vào thi ngay:\n${link}`;
   };
 
-  const handleCopyLink = (session: ExamSession) => {
+  const handleCopyLink = async (session: ExamSession) => {
     soundEffects.playClick();
     const linkedQuiz = quizzes.find((q) => q.id === session.quizId || q.title === session.title);
     const questions = (session.questions && session.questions.length > 0)
@@ -142,7 +163,9 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
       questions
     }).catch(() => {});
 
-    const fullText = getSessionShareText(session);
+    // Link mặc định gửi học sinh: link chứa sẵn toàn bộ đề thi trong chính URL
+    const shareLink = await getStudentExamEmbeddedShareUrl(session, linkedQuiz, questions);
+    const fullText = getSessionShareText(session, shareLink);
     navigator.clipboard?.writeText(fullText);
     setCopiedId(session.id);
     setTimeout(() => setCopiedId(null), 2500);
@@ -183,7 +206,7 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
     soundEffects.playCorrect();
   };
 
-  const handleCreateNewSessionSubmit = (e: React.FormEvent) => {
+  const handleCreateNewSessionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     soundEffects.playClick();
 
@@ -229,6 +252,9 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
         blockAIInExam: true
       }
     };
+
+    // Link chia sẻ của phiên mới = link chứa sẵn toàn bộ đề thi
+    created.shareUrl = await getStudentExamEmbeddedShareUrl(created, chosenQuiz, created.questions || []);
 
     onAddNewSession?.(created);
     cloudStorageService.publishExamDirectly({
@@ -2041,7 +2067,7 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
             </div>
 
             <div className="p-2.5 bg-teal-50 rounded-xl text-teal-800 text-xs font-mono break-all text-left">
-              {getStudentExamShareUrl(activeQrModal.id)}
+              {qrShareUrl || getStudentExamShareUrl(activeQrModal.id)}
             </div>
 
             <div className="flex gap-2">

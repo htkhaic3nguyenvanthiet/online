@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import { ExamSession, Quiz, Classroom, StudentSubmission, Student } from '../types/quiz';
 import { soundEffects } from '../utils/soundEffects';
-import { getStudentExamShareUrl } from '../utils/urlHelper';
+import { getStudentExamShareUrl, getStudentExamEmbeddedShareUrl } from '../utils/urlHelper';
 
 interface ExamSummaryAttendanceViewProps {
   sessions: ExamSession[];
@@ -286,9 +286,18 @@ export const ExamSummaryAttendanceView: React.FC<ExamSummaryAttendanceViewProps>
   }, [unifiedStudentRows]);
 
   // Copy Reminder Message for Absent Students
-  const handleCopyAbsentReminder = () => {
+  const handleCopyAbsentReminder = async () => {
     soundEffects.playClick();
-    const shareLink = getStudentExamShareUrl(currentSession?.id || '');
+    // Link nhắc bài = link chứa sẵn toàn bộ đề thi để học sinh mở đúng đề
+    const shareLink = currentSession
+      ? await getStudentExamEmbeddedShareUrl(
+          currentSession,
+          currentQuiz,
+          (currentSession.questions && currentSession.questions.length > 0)
+            ? currentSession.questions
+            : (currentQuiz?.questions || [])
+        )
+      : getStudentExamShareUrl('');
     const names = unsubmittedStudentsList.map((s, idx) => `${idx + 1}. ${s.studentName} (${s.className || 'Khối 12'})`).join('\n');
     
     const message = `📌 BÀI KIỂM TRA TRỰC TUYẾN - THÔNG BÁO ĐÔN ĐỐC LÀM BÀI
@@ -470,9 +479,15 @@ ${shareLink}
             )}
 
             <button
-              onClick={() => {
+              onClick={async () => {
                 soundEffects.playClick();
-                const link = getStudentExamShareUrl(currentSession.id);
+                const link = await getStudentExamEmbeddedShareUrl(
+                  currentSession,
+                  currentQuiz,
+                  (currentSession.questions && currentSession.questions.length > 0)
+                    ? currentSession.questions
+                    : (currentQuiz?.questions || [])
+                );
                 navigator.clipboard?.writeText(link);
                 alert(`Đã sao chép link phòng thi:\n${link}`);
               }}

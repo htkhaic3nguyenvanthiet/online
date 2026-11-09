@@ -51,6 +51,70 @@ function isTargetUnderlined(htmlSnippet: string, keyRegex: RegExp): boolean {
 }
 
 /**
+ * Find the start position of an option/sub-item marker ("A.", "b)", ...) in an
+ * HTML fragment. A candidate is rejected when the marker letter is immediately
+ * preceded by another letter — e.g. the "a)" in "(kg/ha)" or the "C." in "ĐC."
+ * (đối chứng) are part of words, not markers.
+ */
+function findMarkerStart(body: string, key: string, punctClass: string): number {
+  const re = new RegExp(`(?:<[^>]*>|\\s)*(?:<u>)?(?:<strong>)?\\s*${key}[${punctClass}]`, 'gi');
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(body)) !== null) {
+    const letterPos = m.index + m[0].length - 2;
+    const prev = letterPos > 0 ? body[letterPos - 1] : '';
+    if (!/[A-Za-zÀ-ỹ]/.test(prev)) return m.index;
+  }
+  return -1;
+}
+
+// Section heading patterns (shared by the body splitter and the answer-key reader)
+const PART1_HEADING = /(?:PHẦN\s*(?:I\b|THỨ\s*NHẤT|1\b)|CÂU\s*HỎI\s*NHIỀU\s*PHƯƠNG\s*ÁN)/i;
+const PART2_HEADING = /(?:PHẦN\s*(?:II\b|THỨ\s*HAI|2\b)|CÂU\s*HỎI\s*ĐÚNG\s*SAI)/i;
+const PART3_HEADING = /(?:PHẦN\s*(?:III\b|THỨ\s*BA|3\b)|CÂU\s*HỎI\s*TRẢ\s*LỜI\s*NGẮN)/i;
+
+/**
+ * Read the Phần III (short-answer) answers out of the answer-key section.
+ * Key lines look like "Câu 1: 9/16. <short explanation>" — the answer is the
+ * first token run after "Câu N:", ending at the first '.' followed by a space
+ * (sentence end), at ';', or at the line end. The value is kept VERBATIM as
+ * printed ("9/16", "0,6", "3000", "41,5%"); no reformatting is applied.
+ * Returns an empty map when the key has no Phần III segment.
+ */
+function extractPart3AnswersFromKey(answerSectionHtml: string): Map<number, string> {
+  const answers = new Map<number, string>();
+  if (!answerSectionHtml) return answers;
+
+  const text = stripHtml(answerSectionHtml.replace(/<img[^>]*>/gi, ''));
+  const p3Index = text.search(PART3_HEADING);
+  if (p3Index === -1) return answers;
+
+  let segment = text.substring(p3Index);
+  // If another part's heading follows the Phần III heading (unusual key order),
+  // stop the segment there so its entries cannot pollute the map.
+  const rest = segment.substring(8);
+  const nextHeading = rest.search(new RegExp(`(?:${PART1_HEADING.source}|${PART2_HEADING.source})`, 'i'));
+  if (nextHeading !== -1) segment = segment.substring(0, nextHeading + 8);
+
+  const entryRegex = /Câu\s*(\d+)\s*[:.]\s*/g;
+  const entries = [...segment.matchAll(entryRegex)];
+  entries.forEach((m, i) => {
+    const start = (m.index ?? 0) + m[0].length;
+    const end = i + 1 < entries.length ? (entries[i + 1].index ?? segment.length) : segment.length;
+    let raw = segment.substring(start, end).split(/[;\n]/)[0];
+    const sentenceEnd = raw.search(/\.\s/);
+    if (sentenceEnd !== -1) raw = raw.substring(0, sentenceEnd);
+    const value = raw.replace(/\.+$/, '').trim();
+    // Skip implausible values: a lone A–D letter is a Phần I key leaking in,
+    // and Đúng/Sai wording belongs to Phần II entries.
+    if (value && !/^[A-D]$/.test(value) && !/^(?:Đúng|Sai)\b/i.test(value)) {
+      answers.set(parseInt(m[1], 10), value);
+    }
+  });
+
+  return answers;
+}
+
+/**
  * Robust Circular 7991 HTML Parser:
  * Guarantees that EVERY authored question in the Word document is preserved.
  */
@@ -63,18 +127,50 @@ export function parseCircular7991Html(htmlContent: string, defaultTitle = 'ĐỀ
     .replace(/<\/tr>/gi, '\n</tr>')
     .replace(/<\/li>/gi, '\n</li>');
 
+  // The teacher's canonical file appends an answer-key section ("ĐÁP ÁN ...")
+  // after the exam body. That section repeats "Câu N: ..." lines, so it must be
+  // cut off before parsing, otherwise key lines are mistaken for questions.
+  const answerKeyPatterns = [
+    /(?:<p[^>]*>|<div[^>]*>|\n)\s*(?:<[^>]+>\s*)*ĐÁP\s*ÁN/i,
+    // Heading may carry a short non-letter prefix (dashes, dots): "—— ĐÁP ÁN ..."
+    /(?:<p[^>]*>|<div[^>]*>|\n)\s*(?:<[^>]+>\s*)*[^A-Za-zÀ-ỹ<]{0,16}ĐÁP\s*ÁN/i,
+  ];
+  let answerKeyIndex = -1;
+  for (const pattern of answerKeyPatterns) {
+    const idx = normalizedHtml.search(pattern);
+    if (idx !== -1 && (answerKeyIndex === -1 || idx < answerKeyIndex)) answerKeyIndex = idx;
+  }
+
+  // A standalone end-of-exam paragraph ("— HẾT —") also terminates the body:
+  // it must not stay glued onto the last question's stem.
+  const hetIndex = normalizedHtml.search(
+    /(?:<p[^>]*>|<div[^>]*>|\n)\s*(?:<[^>]+>\s*)*[—–\-]*\s*HẾT\s*[—–\-]*\s*(?:<[^>]+>\s*)*\n/i
+  );
+
+  // The answer-key section is kept aside: Phần III answers live ONLY there.
+  const answerSectionHtml = answerKeyIndex !== -1 ? normalizedHtml.substring(answerKeyIndex) : '';
+  const part3KeyAnswers = extractPart3AnswersFromKey(answerSectionHtml);
+
+  let bodyEnd = normalizedHtml.length;
+  if (answerKeyIndex !== -1) bodyEnd = Math.min(bodyEnd, answerKeyIndex);
+  if (hetIndex !== -1) bodyEnd = Math.min(bodyEnd, hetIndex);
+
+  // Strip <img> tags: embedded base64 image data contains letter+punctuation
+  // sequences (e.g. "A/") that create false option markers inside the payload.
+  const bodyHtml = normalizedHtml.substring(0, bodyEnd).replace(/<img[^>]*>/gi, '');
+
   // Identify sections: PHẦN I, PHẦN II, PHẦN III
-  const part1Regex = /(?:PHẦN\s*(?:I\b|THỨ\s*NHẤT|1\b)|CÂU\s*HỎI\s*NHIỀU\s*PHƯƠNG\s*ÁN)/i;
-  const part2Regex = /(?:PHẦN\s*(?:II\b|THỨ\s*HAI|2\b)|CÂU\s*HỎI\s*ĐÚNG\s*SAI)/i;
-  const part3Regex = /(?:PHẦN\s*(?:III\b|THỨ\s*BA|3\b)|CÂU\s*HỎI\s*TRẢ\s*LỜI\s*NGẮN)/i;
+  const part1Regex = PART1_HEADING;
+  const part2Regex = PART2_HEADING;
+  const part3Regex = PART3_HEADING;
 
   let section1Html = '';
   let section2Html = '';
   let section3Html = '';
 
-  const p1Match = normalizedHtml.search(part1Regex);
-  const p2Match = normalizedHtml.search(part2Regex);
-  const p3Match = normalizedHtml.search(part3Regex);
+  const p1Match = bodyHtml.search(part1Regex);
+  const p2Match = bodyHtml.search(part2Regex);
+  const p3Match = bodyHtml.search(part3Regex);
 
   const hasExplicitParts = (p1Match !== -1 || p2Match !== -1 || p3Match !== -1);
 
@@ -87,8 +183,8 @@ export function parseCircular7991Html(htmlContent: string, defaultTitle = 'ĐỀ
 
     for (let i = 0; i < indices.length; i++) {
       const current = indices[i];
-      const nextIndex = i + 1 < indices.length ? indices[i + 1].index : normalizedHtml.length;
-      const snippet = normalizedHtml.substring(current.index, nextIndex);
+      const nextIndex = i + 1 < indices.length ? indices[i + 1].index : bodyHtml.length;
+      const snippet = bodyHtml.substring(current.index, nextIndex);
       if (current.part === 1) section1Html = snippet;
       if (current.part === 2) section2Html = snippet;
       if (current.part === 3) section3Html = snippet;
@@ -107,13 +203,13 @@ export function parseCircular7991Html(htmlContent: string, defaultTitle = 'ĐỀ
   // HELPER 1: Parse a block as Part I (Multiple Choice A, B, C, D)
   const parseAsPart1 = (block: string): boolean => {
     // Extract Question Content (before option A)
-    const optASplit = block.split(/(?=(?:<[^>]+>|\s)*(?:<u>)?\s*(?:<strong>)?\s*A[\.\:\)\/])/i);
     let questionHeadHtml = block;
     let optionsBody = '';
 
-    if (optASplit.length >= 2) {
-      questionHeadHtml = optASplit[0];
-      optionsBody = block.substring(questionHeadHtml.length);
+    const aStart = findMarkerStart(block, 'A', '\\.\\:\\)\\/');
+    if (aStart !== -1) {
+      questionHeadHtml = block.substring(0, aStart);
+      optionsBody = block.substring(aStart);
     } else {
       // Fallback: look for A. anywhere
       const aIndex = block.search(/(?:^|\n|\s|[>])A[\.\:\)\/]\s*/i);
@@ -134,14 +230,12 @@ export function parseCircular7991Html(htmlContent: string, defaultTitle = 'ĐỀ
       const currentKey = optionKeys[k];
       const nextKey = optionKeys[k + 1];
 
-      const startRegex = new RegExp(`(?:<[^>]*>|\\s)*(?:<u>)?(?:<strong>)?\\s*${currentKey}[\\.\\:\\)\\/]`, 'i');
-      const startPos = optionsBody.search(startRegex);
+      const startPos = findMarkerStart(optionsBody, currentKey, '\\.\\:\\)\\/');
 
       if (startPos !== -1) {
         let endPos = optionsBody.length;
         if (nextKey) {
-          const nextRegex = new RegExp(`(?:<[^>]*>|\\s)*(?:<u>)?(?:<strong>)?\\s*${nextKey}[\\.\\:\\)\\/]`, 'i');
-          const searchNext = optionsBody.substring(startPos + 2).search(nextRegex);
+          const searchNext = findMarkerStart(optionsBody.substring(startPos + 2), nextKey, '\\.\\:\\)\\/');
           if (searchNext !== -1) {
             endPos = startPos + 2 + searchNext;
           }
@@ -203,11 +297,11 @@ export function parseCircular7991Html(htmlContent: string, defaultTitle = 'ĐỀ
 
   // HELPER 2: Parse a block as Part II (True/False a, b, c, d)
   const parseAsPart2 = (block: string): boolean => {
-    const subItemSplit = block.split(/(?=(?:<[^>]+>|\s)*(?:<u>)?(?:<strong>)?\s*a[\.\:\)])/i);
-    const questionPromptHtml = subItemSplit[0] || '';
+    const aStart = findMarkerStart(block, 'a', '\\.\\:\\)');
+    const questionPromptHtml = aStart === -1 ? '' : block.substring(0, aStart);
     const cleanPrompt = stripHtml(questionPromptHtml).replace(/^.*?Câu\s*\d+[:.\-\s]\s*/i, '').trim();
 
-    const subItemsBody = block.substring(questionPromptHtml.length);
+    const subItemsBody = aStart === -1 ? block : block.substring(aStart);
     const subKeys: ('a' | 'b' | 'c' | 'd')[] = ['a', 'b', 'c', 'd'];
     const subItems: SubQuestionItem[] = [];
 
@@ -215,14 +309,12 @@ export function parseCircular7991Html(htmlContent: string, defaultTitle = 'ĐỀ
       const curKey = subKeys[s];
       const nxtKey = subKeys[s + 1];
 
-      const startRegex = new RegExp(`(?:<[^>]*>|\\s)*(?:<u>)?(?:<strong>)?\\s*${curKey}[\\.\\:\\)]`, 'i');
-      const startPos = subItemsBody.search(startRegex);
+      const startPos = findMarkerStart(subItemsBody, curKey, '\\.\\:\\)');
 
       if (startPos !== -1) {
         let endPos = subItemsBody.length;
         if (nxtKey) {
-          const nxtRegex = new RegExp(`(?:<[^>]*>|\\s)*(?:<u>)?(?:<strong>)?\\s*${nxtKey}[\\.\\:\\)]`, 'i');
-          const searchNxt = subItemsBody.substring(startPos + 2).search(nxtRegex);
+          const searchNxt = findMarkerStart(subItemsBody.substring(startPos + 2), nxtKey, '\\.\\:\\)');
           if (searchNxt !== -1) {
             endPos = startPos + 2 + searchNxt;
           }
@@ -278,21 +370,42 @@ export function parseCircular7991Html(htmlContent: string, defaultTitle = 'ĐỀ
     return true;
   };
 
-  // HELPER 3: Parse a block as Part III (Short Answer 4 numeric chars)
+  // HELPER 3: Parse a block as Part III (Short Answer)
   const parseAsPart3 = (block: string): boolean => {
     const rawText = stripHtml(block);
-    const cleanContent = rawText
+    // This question's own number ("Câu N.") — used to look up its key answer.
+    const numMatch = rawText.match(/Câu\s*(\d+)\s*[:.]/i);
+    const questionNum = numMatch ? parseInt(numMatch[1], 10) : -1;
+
+    let cleanContent = rawText
       .replace(/^.*?Câu\s*\d+[:.\-\s]\s*/i, '')
       .replace(/(?:Đáp\s*án|ĐS|Key|A)[\.\:\)]\s*\d{1,4}.*$/i, '')
       .trim();
+    // Defence in depth: drop a trailing standalone end-of-exam line ("— HẾT —")
+    // if one ever survives into the block.
+    cleanContent = cleanContent
+      .split('\n')
+      .filter((line, idx, arr) => !(idx === arr.length - 1 && /^\s*[—–\-]*\s*HẾT\s*[—–\-]*\s*$/.test(line) && (line.includes('—') || line.includes('–') || line.trim() === 'HẾT')))
+      .join('\n')
+      .trim();
+
+    // Preferred source: the answer-key section of the same file (verbatim).
+    const keyAnswer = questionNum !== -1 ? part3KeyAnswers.get(questionNum) : undefined;
 
     let shortAnswer = '1234'; // Default per user specification A.1234
-    const answerMatch = block.match(/(?:A[\.\:\)]\s*|Đáp\s*án\s*[:\s]*|ĐS\s*[:\s]*|<u[^>]*>\s*A?[\.\:]?\s*)(\d{1,4})/i)
-      || rawText.match(/(?:A[\.\:\)]\s*|Đáp\s*án\s*[:\s]*|ĐS\s*[:\s]*)(\d{1,4})/i)
-      || rawText.match(/\bA\.(\d{4})\b/i);
+    let explanation = '';
+    if (keyAnswer) {
+      shortAnswer = keyAnswer;
+      explanation = `Đáp án trích từ phần ĐÁP ÁN của file Word: ${shortAnswer}.`;
+    } else {
+      const answerMatch = block.match(/(?:A[\.\:\)]\s*|Đáp\s*án\s*[:\s]*|ĐS\s*[:\s]*|<u[^>]*>\s*A?[\.\:]?\s*)(\d{1,4})/i)
+        || rawText.match(/(?:A[\.\:\)]\s*|Đáp\s*án\s*[:\s]*|ĐS\s*[:\s]*)(\d{1,4})/i)
+        || rawText.match(/\bA\.(\d{4})\b/i);
 
-    if (answerMatch && answerMatch[1]) {
-      shortAnswer = answerMatch[1].trim().slice(0, 4);
+      if (answerMatch && answerMatch[1]) {
+        shortAnswer = answerMatch[1].trim().slice(0, 4);
+      }
+      explanation = `Đáp án số 4 ký tự chuẩn: ${shortAnswer}. Thí sinh nhập đúng 4 chữ số.`;
     }
 
     allQuestions.push({
@@ -303,7 +416,7 @@ export function parseCircular7991Html(htmlContent: string, defaultTitle = 'ĐỀ
       shortAnswerCorrect: shortAnswer,
       correctAnswer: shortAnswer,
       options: [],
-      explanation: `Đáp án số 4 ký tự chuẩn: ${shortAnswer}. Thí sinh nhập đúng 4 chữ số.`,
+      explanation,
       points: 0.25
     });
 
@@ -311,24 +424,30 @@ export function parseCircular7991Html(htmlContent: string, defaultTitle = 'ĐỀ
     return true;
   };
 
+  // A block only counts as a question when it STARTS with "Câu N." (after any
+  // leading HTML tags). Section headers such as "PHẦN I. Thí sinh trả lời từ
+  // câu 1 đến câu 24..." mention "câu 1" mid-sentence and must NOT be treated
+  // as a question block (doing so shifts every detected answer by one).
+  const isQuestionBlock = (b: string) => /^(?:<[^>]+>|\s)*Câu\s*\d+\s*[.:]/i.test(b);
+
   // EXECUTION PATH A: Explicit Section Headers Present
   if (hasExplicitParts) {
     if (section1Html) {
-      const qBlocks = section1Html.split(questionSplitter).filter(b => b.trim() && /(?:Câu\s*\d+[:.\-\s])/i.test(b));
+      const qBlocks = section1Html.split(questionSplitter).filter(isQuestionBlock);
       qBlocks.forEach(b => parseAsPart1(b));
     }
     if (section2Html) {
-      const qBlocks = section2Html.split(questionSplitter).filter(b => b.trim() && /(?:Câu\s*\d+[:.\-\s])/i.test(b));
+      const qBlocks = section2Html.split(questionSplitter).filter(isQuestionBlock);
       qBlocks.forEach(b => parseAsPart2(b));
     }
     if (section3Html) {
-      const qBlocks = section3Html.split(questionSplitter).filter(b => b.trim() && /(?:Câu\s*\d+[:.\-\s])/i.test(b));
+      const qBlocks = section3Html.split(questionSplitter).filter(isQuestionBlock);
       qBlocks.forEach(b => parseAsPart3(b));
     }
   } else {
     // EXECUTION PATH B: Standard Exam Without Explicit "PHẦN" Headers
     // Automatically classify each question based on its internal structure!
-    const allBlocks = normalizedHtml.split(questionSplitter).filter(b => b.trim() && /(?:Câu\s*\d+[:.\-\s])/i.test(b));
+    const allBlocks = bodyHtml.split(questionSplitter).filter(isQuestionBlock);
 
     allBlocks.forEach((b) => {
       // Check if block has True/False format: contains a), b), c) or a., b., c.

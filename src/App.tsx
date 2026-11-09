@@ -4,7 +4,7 @@ import { mockClassrooms, mockSessions } from './data/mockData';
 import { realtimeEngine } from './services/realtimeEngine';
 import { soundEffects } from './utils/soundEffects';
 import { cloudStorageService } from './services/cloudStorageService';
-import { getStudentExamShareUrl, getExamIdFromUrl } from './utils/urlHelper';
+import { getStudentExamShareUrl, getExamIdFromUrl, getEmbeddedExamPayloadFromLocation, buildSessionFromEmbeddedPayload, getStudentExamEmbeddedShareUrl } from './utils/urlHelper';
 
 import { TopNavbar } from './components/TopNavbar';
 import { Sidebar } from './components/Sidebar';
@@ -71,7 +71,7 @@ export default function App() {
       )
       .then((res) => {
         if (res.success) {
-          setAutoBackupToast(`✓ Đã tự động lưu lên máy chủ: ${new Date().toLocaleTimeString('vi-VN')}`);
+          setAutoBackupToast(`✓ Đã tự động lưu: ${new Date().toLocaleTimeString('vi-VN')}`);
           setTimeout(() => setAutoBackupToast(null), 3500);
         }
       });
@@ -79,14 +79,28 @@ export default function App() {
 
   // URL Routing check for direct student exam link (?exam=... or #exam/...)
   useEffect(() => {
-    const handleUrlRouting = () => {
+    const handleUrlRouting = async () => {
+      // 1. ƯU TIÊN TUYỆT ĐỐI: đề thi nhúng sẵn trong link (#d=...). Học sinh mở
+      // đúng đề trên mọi thiết bị mà không cần máy chủ hay localStorage.
+      const embedded = await getEmbeddedExamPayloadFromLocation();
+      if (embedded && embedded.questions.length > 0) {
+        const embeddedSess = buildSessionFromEmbeddedPayload(embedded);
+        setIsDirectStudentMode(true);
+        setAppMode('student');
+        setActiveStudentExamSession(embeddedSess);
+        setActiveStudentExamTitle(embedded.quizTitle || embeddedSess.title);
+        setSessions((prev) => [embeddedSess, ...prev.filter((s) => s.id !== embeddedSess.id)]);
+        setIsExamLoading(false);
+        return;
+      }
+
       const examParam = getExamIdFromUrl();
       if (examParam) {
         setIsDirectStudentMode(true);
         setIsExamLoading(true);
         setAppMode('student');
 
-        // ALWAYS fetch live exam & questions from server to ensure 100% updated teacher questions!
+        // Fetch exam & questions from server/local store (khớp id chính xác)
         cloudStorageService
           .fetchExamFromServer(examParam)
           .then((res) => {
@@ -130,13 +144,12 @@ export default function App() {
                 setQuizzes((prev) => [{ ...res.quiz!, questions: fetchedQuestions }, ...prev.filter((q) => q.id !== res.quiz?.id)]);
               }
             } else {
-              // Fallback to local state if server has not synced yet
+              // Fallback to local state if server has not synced yet.
+              // CHỈ khớp chính xác theo id — không khớp theo tiêu đề hay tiền tố
+              // id, để tránh mở một đề lại hiện câu hỏi của đề cũ khác.
               const localSess = sessions.find((s) => s.id === examParam || s.quizId === examParam);
               const localQuiz = quizzes.find(
-                (q) =>
-                  q.id === examParam ||
-                  q.title.toLowerCase() === examParam.toLowerCase() ||
-                  examParam.startsWith(q.id.slice(0, 6))
+                (q) => q.id === examParam || (localSess && q.id === localSess.quizId)
               );
 
               if (localSess && localSess.questions && localSess.questions.length > 0) {
@@ -178,16 +191,18 @@ export default function App() {
   useEffect(() => {
     cloudStorageService.fetchFromCloud(currentSyncKey).then((cloudData) => {
       if (cloudData) {
-        if (cloudData.quizzes && cloudData.quizzes.length > 0) {
+        // Áp dụng mảng đã lưu kể cả khi RỖNG: nếu giáo viên đã xóa hết đề/lớp/
+        // phiên thi, danh sách rỗng phải thắng, không để dữ liệu cũ hiện lại.
+        if (Array.isArray(cloudData.quizzes)) {
           setQuizzes(cloudData.quizzes);
         }
-        if (cloudData.classrooms && cloudData.classrooms.length > 0) {
+        if (Array.isArray(cloudData.classrooms)) {
           const cleanClassrooms = cloudData.classrooms.filter(
             (c) => c.code !== '12A5MT' && c.code !== 'CNNN25' && c.code !== 'CN12TN' && !c.name.includes('THPT MANG THÍT')
           );
           setClassrooms(cleanClassrooms);
         }
-        if (cloudData.sessions && cloudData.sessions.length > 0) {
+        if (Array.isArray(cloudData.sessions)) {
           setSessions(cloudData.sessions);
         }
       }
@@ -295,7 +310,7 @@ export default function App() {
     triggerAutoBackup(updated, classrooms, sessions);
   };
 
-  const handleDeployQuiz = (quiz: Quiz) => {
+  const handleDeployQuiz = async (quiz: Quiz) => {
     const newSessionId = 'sess-' + Math.floor(1000000 + Math.random() * 9000000);
     const newSession: ExamSession = {
       id: newSessionId,
@@ -333,6 +348,9 @@ export default function App() {
         blockAIInExam: true
       }
     };
+    // Link chia sẻ mặc định = link chứa sẵn toàn bộ đề thi, học sinh mở đúng
+    // đề trên mọi thiết bị (trang tĩnh không có máy chủ dùng chung).
+    newSession.shareUrl = await getStudentExamEmbeddedShareUrl(newSession, quiz, quiz.questions || []);
     const updatedSessions = [newSession, ...sessions];
     setSessions(updatedSessions);
     cloudStorageService.publishExamDirectly({
@@ -362,9 +380,10 @@ export default function App() {
       const q = quizzes.find((quiz) => quiz.id === targetSession.quizId);
       if (q?.questions && q.questions.length > 0) return q.questions;
     }
-    // 3. By title
+    // 3. By title (chỉ dùng cho chế độ xem trước của giáo viên — học sinh vào
+    // bằng link KHÔNG được khớp theo tiêu đề để tránh hiện nhầm đề khác)
     const searchTitle = targetTitle || targetSession?.title;
-    if (searchTitle) {
+    if (searchTitle && !isDirectStudentMode) {
       const q = quizzes.find((quiz) =>
         quiz.title.toLowerCase().trim() === searchTitle.toLowerCase().trim() ||
         searchTitle.toLowerCase().includes(quiz.title.toLowerCase()) ||
@@ -372,10 +391,10 @@ export default function App() {
       );
       if (q?.questions && q.questions.length > 0) return q.questions;
     }
-    // 4. By URL exam param
+    // 4. By URL exam param (khớp id chính xác)
     const urlId = getExamIdFromUrl();
     if (urlId) {
-      const q = quizzes.find((quiz) => quiz.id === urlId || quiz.id.startsWith(urlId.slice(0, 6)));
+      const q = quizzes.find((quiz) => quiz.id === urlId);
       if (q?.questions && q.questions.length > 0) return q.questions;
     }
     // 5. In direct student mode: NEVER fallback to sample fake questions!
@@ -425,43 +444,19 @@ export default function App() {
               <Sparkles className="w-8 h-8 animate-spin" />
             </div>
             <div>
-              <h2 className="text-lg font-black text-white tracking-tight">Đang tải đề thi chính thức</h2>
+              <h2 className="text-lg font-black text-white tracking-tight">Không tìm thấy đề thi</h2>
               <p className="text-xs text-teal-200/90 mt-1 font-medium">
-                Hệ thống đang tải toàn bộ câu hỏi do Giáo viên biên soạn từ máy chủ. Vui lòng bấm nút bên dưới nếu đường truyền mạng chậm:
+                Không tìm thấy đề thi tương ứng với liên kết này trên thiết bị. Hãy dùng link đầy đủ do giáo viên gửi (link đầy đủ có chứa sẵn toàn bộ câu hỏi của đề thi), hoặc bấm nút bên dưới để tải lại trang:
               </p>
             </div>
             <div className="space-y-3 pt-2">
               <button
                 onClick={() => {
-                  const examParam = getExamIdFromUrl() || 'sess-default';
-                  setIsExamLoading(true);
-                  cloudStorageService.fetchExamFromServer(examParam).then((res) => {
-                    if (res.found && res.questions && res.questions.length > 0) {
-                      const updatedSess: ExamSession = {
-                        id: examParam,
-                        title: res.session?.title || res.quiz?.title || 'Bài kiểm tra trực tuyến',
-                        quizId: res.session?.quizId || res.quiz?.id || 'quiz-' + examParam,
-                        className: res.session?.className || 'Khối 12',
-                        startTime: 'Đang mở',
-                        endTime: '31/12/2026',
-                        status: 'active',
-                        shareUrl: getStudentExamShareUrl(examParam),
-                        allowedAttempts: 5,
-                        durationMinutes: res.session?.durationMinutes || res.quiz?.durationMinutes || 45,
-                        totalSubmissions: 0,
-                        maxSlots: 500,
-                        isArenaMode: true,
-                        questionCount: res.questions.length,
-                        questions: res.questions,
-                      };
-                      setActiveStudentExamSession(updatedSess);
-                      setActiveStudentExamTitle(updatedSess.title);
-                    }
-                  }).finally(() => setIsExamLoading(false));
+                  window.location.reload();
                 }}
                 className="btn-3d btn-3d-teal w-full py-3 text-xs rounded-xl font-black cursor-pointer shadow-lg text-white"
               >
-                🔄 Bấm vào đây để tải lại đề thi từ Máy Chủ
+                🔄 Tải lại trang
               </button>
 
               <button
@@ -582,7 +577,9 @@ export default function App() {
                       fileName: 'Ban_sao_' + q.fileName,
                       createdAt: new Date().toLocaleDateString('vi-VN')
                     };
-                    setQuizzes((prev) => [dup, ...prev]);
+                    const updatedQuizzes = [dup, ...quizzes];
+                    setQuizzes(updatedQuizzes);
+                    triggerAutoBackup(updatedQuizzes, classrooms, sessions);
                     soundEffects.playCorrect();
                   }}
                   onDeleteQuiz={(quizId) => {
@@ -805,9 +802,22 @@ export default function App() {
         currentSyncKey={currentSyncKey}
         onChangeSyncKey={(key) => setCurrentSyncKey(key)}
         onDataRestored={(data) => {
-          if (data.quizzes) setQuizzes(data.quizzes);
-          if (data.classrooms) setClassrooms(data.classrooms);
-          if (data.sessions) setSessions(data.sessions);
+          const restoredQuizzes = Array.isArray(data.quizzes) ? data.quizzes : quizzes;
+          const restoredClassrooms = Array.isArray(data.classrooms) ? data.classrooms : classrooms;
+          const restoredSessions = Array.isArray(data.sessions) ? data.sessions : sessions;
+          setQuizzes(restoredQuizzes);
+          setClassrooms(restoredClassrooms);
+          setSessions(restoredSessions);
+          // Lưu ngay dữ liệu vừa khôi phục để tải lại trang không hiện lại dữ liệu cũ
+          cloudStorageService.syncToCloud(
+            {
+              quizzes: restoredQuizzes,
+              classrooms: restoredClassrooms,
+              sessions: restoredSessions,
+              submissions,
+            },
+            currentSyncKey
+          );
         }}
         onClearJunkData={handleClearJunkData}
       />

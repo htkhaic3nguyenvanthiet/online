@@ -121,7 +121,7 @@ export const cloudStorageService = {
 
     return {
       success: true,
-      message: `Đã lưu trữ an toàn vào bộ nhớ máy chủ đám mây với Mã Khóa [${syncKey}]!`,
+      message: `Đã lưu an toàn trên THIẾT BỊ NÀY với Mã Khóa [${syncKey}]. Lưu ý: trang đang chạy ở chế độ tĩnh (chưa có máy chủ đám mây dùng chung) nên dữ liệu chỉ nằm trên máy này — học sinh cần dùng link đầy đủ có chứa sẵn đề thi do hệ thống tạo khi giao đề.`,
       timestamp,
       syncKey,
     };
@@ -230,15 +230,17 @@ export const cloudStorageService = {
       }
     }
 
-    // Fallback: Query fetchFromCloud to find any session/quiz with questions in active cloud store
+    // Fallback: tìm trong kho dữ liệu cục bộ của CHÍNH thiết bị này.
+    // CHỈ khớp chính xác theo id — tuyệt đối không lấy "bất kỳ đề nào có câu
+    // hỏi", vì như vậy học sinh sẽ thấy đề cũ/đề khác thay vì đề được giao.
     try {
       const cloudData = await this.fetchFromCloud();
       if (cloudData) {
         const matchedSess = cloudData.sessions?.find(
-          (s) => s.id === examId || s.quizId === examId || (s.questions && s.questions.length > 0)
+          (s) => s.id === examId || s.quizId === examId
         );
         const matchedQuiz = cloudData.quizzes?.find(
-          (q) => q.id === examId || (matchedSess && q.id === matchedSess.quizId) || (q.questions && q.questions.length > 0)
+          (q) => q.id === examId || (matchedSess && q.id === matchedSess.quizId)
         );
         const questions = matchedSess?.questions || matchedQuiz?.questions || [];
         if (questions.length > 0) {
