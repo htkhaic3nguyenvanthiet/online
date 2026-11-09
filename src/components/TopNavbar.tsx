@@ -84,7 +84,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
                 <span className="font-extrabold text-xl tracking-tight text-emerald-800">Test Online</span>
                 <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-md font-bold tracking-wide uppercase">2026 Pro</span>
               </div>
-              <p className="text-[11px] text-slate-600 font-medium">Tác giả: Hồ Tấn Khải - Trường THPT Mang Thít</p>
+              <p className="text-[11px] text-slate-600 font-medium">Hệ thống khảo thí số & Đánh giá năng lực trực tuyến</p>
             </div>
           </div>
 
@@ -184,7 +184,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
             </div>
             <div className="hidden xl:block text-left text-xs">
               <div className="font-bold text-slate-800 leading-tight">Thầy Hồ Tấn Khải</div>
-              <div className="text-[10px] text-slate-500 font-medium">Trường THPT Mang Thít</div>
+              <div className="text-[10px] text-slate-500 font-medium">Quản trị viên hệ thống</div>
             </div>
             <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
           </div>

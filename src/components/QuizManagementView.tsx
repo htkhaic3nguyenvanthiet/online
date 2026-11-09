@@ -42,11 +42,28 @@ export const QuizManagementView: React.FC<QuizManagementViewProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
-  const [customFolders, setCustomFolders] = useState<string[]>([
-    'CÔNG NGHỆ 12'
-  ]);
+  const [customFolders, setCustomFolders] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('testonline_custom_folders');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {
+      // ignore
+    }
+    return ['CÔNG NGHỆ 12', 'ĐỀ THI HỌC KỲ', 'KIỂM TRA 15 PHÚT'];
+  });
   const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
+
+  // All distinct folders from system and quizzes
+  const allFolders = Array.from(
+    new Set([
+      ...customFolders,
+      ...quizzes.map((q) => q.folder).filter(Boolean) as string[]
+    ])
+  );
 
   const filteredQuizzes = quizzes.filter(q => {
     const matchesSearch = q.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -61,8 +78,15 @@ export const QuizManagementView: React.FC<QuizManagementViewProps> = ({
 
     soundEffects.playClick();
     const formatted = newFolderName.trim().toUpperCase();
+    let updated = customFolders;
     if (!customFolders.includes(formatted)) {
-      setCustomFolders((prev) => [...prev, formatted]);
+      updated = [...customFolders, formatted];
+      setCustomFolders(updated);
+      try {
+        localStorage.setItem('testonline_custom_folders', JSON.stringify(updated));
+      } catch {
+        // ignore
+      }
     }
     setSelectedFolder(formatted);
     setNewFolderName('');
@@ -240,6 +264,60 @@ ${q.options ? q.options.map(o => `  ${o.key}. ${o.text}`).join('\n') : q.subItem
         </div>
       </div>
 
+      {/* Interactive Folder Tabs Bar (INSTANT DISPLAY & ACCESS) */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1">
+        <button
+          onClick={() => {
+            soundEffects.playClick();
+            setSelectedFolder(null);
+          }}
+          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold shrink-0 flex items-center gap-1.5 transition-all cursor-pointer ${
+            selectedFolder === null
+              ? 'bg-teal-700 text-white shadow-sm ring-2 ring-teal-400/50'
+              : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <Folder className="w-3.5 h-3.5" />
+          <span>Tất cả đề ({quizzes.length})</span>
+        </button>
+
+        {allFolders.map((folderName) => {
+          const count = quizzes.filter(q => q.folder === folderName).length;
+          const isSelected = selectedFolder === folderName;
+          return (
+            <button
+              key={folderName}
+              onClick={() => {
+                soundEffects.playClick();
+                setSelectedFolder(folderName);
+              }}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold shrink-0 flex items-center gap-1.5 transition-all cursor-pointer ${
+                isSelected
+                  ? 'bg-amber-600 text-white shadow-sm ring-2 ring-amber-300'
+                  : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+              }`}
+            >
+              <Folder className={`w-3.5 h-3.5 ${isSelected ? 'fill-white text-white' : 'fill-amber-400 text-amber-500'}`} />
+              <span>{folderName}</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${isSelected ? 'bg-amber-700 text-amber-100' : 'bg-slate-100 text-slate-600'}`}>
+                {count}
+              </span>
+            </button>
+          );
+        })}
+
+        <button
+          onClick={() => {
+            soundEffects.playClick();
+            setIsFolderModalOpen(true);
+          }}
+          className="px-3 py-1.5 rounded-xl text-xs font-bold text-teal-700 bg-teal-50 border border-dashed border-teal-300 hover:bg-teal-100/70 shrink-0 flex items-center gap-1 cursor-pointer transition-colors"
+        >
+          <FolderPlus className="w-3.5 h-3.5" />
+          <span>+ Thư mục mới</span>
+        </button>
+      </div>
+
       {/* Section: Tất cả (Table matching Screenshot 2) */}
       <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
         <div className="px-5 py-3.5 border-b border-slate-200/80 flex flex-wrap items-center justify-between gap-2">
@@ -339,8 +417,13 @@ ${q.options ? q.options.map(o => `  ${o.key}. ${o.text}`).join('\n') : q.subItem
                         >
                           {quiz.fileName}
                         </span>
+                        {quiz.folder && (
+                          <span className="ml-2 text-[10px] bg-amber-50 text-amber-800 font-bold px-1.5 py-0.5 rounded-md border border-amber-200">
+                            📁 {quiz.folder}
+                          </span>
+                        )}
                         {quiz.isInteractive && (
-                          <span className="ml-2 text-[10px] bg-rose-100 text-rose-700 font-bold px-1.5 py-0.5 rounded-sm">
+                          <span className="ml-1.5 text-[10px] bg-rose-100 text-rose-700 font-bold px-1.5 py-0.5 rounded-sm">
                             Tương tác 3D
                           </span>
                         )}
@@ -429,6 +512,54 @@ ${q.options ? q.options.map(o => `  ${o.key}. ${o.text}`).join('\n') : q.subItem
                   </td>
                 </tr>
               ))}
+
+              {/* EMPTY STATE (Clear, immediate visual feedback for new folders and search) */}
+              {filteredQuizzes.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="py-12 px-6 text-center">
+                    <div className="max-w-md mx-auto space-y-3">
+                      <div className="w-14 h-14 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto border border-amber-200 shadow-sm">
+                        <Folder className="w-7 h-7 fill-amber-400 text-amber-500" />
+                      </div>
+                      <div>
+                        <h4 className="font-extrabold text-sm text-slate-800">
+                          {selectedFolder ? `Thư mục "${selectedFolder}" sẵn sàng` : 'Không tìm thấy đề thi phù hợp'}
+                        </h4>
+                        <p className="text-[11px] text-slate-500 mt-1">
+                          {selectedFolder 
+                            ? `Thư mục "${selectedFolder}" vừa được tạo thành công! Hãy bấm nút bên dưới để tạo đề hoặc tải file Word vào thư mục này ngay.` 
+                            : 'Thử tìm với từ khóa khác hoặc bấm nút Tạo mới đề để thêm đề vào hệ thống.'}
+                        </p>
+                      </div>
+                      <div className="pt-1 flex items-center justify-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            soundEffects.playClick();
+                            onCreateQuiz();
+                          }}
+                          className="btn-3d btn-3d-teal px-4 py-2 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shadow-md"
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>Tạo mới đề ngay</span>
+                        </button>
+                        {selectedFolder && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              soundEffects.playClick();
+                              setSelectedFolder(null);
+                            }}
+                            className="btn-3d btn-3d-slate px-3 py-2 rounded-xl text-xs font-bold inline-flex items-center gap-1 cursor-pointer"
+                          >
+                            <span>Xem tất cả đề</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

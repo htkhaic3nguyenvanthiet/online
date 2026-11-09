@@ -229,6 +229,18 @@ export default function App() {
   const handleSaveQuiz = (newQuiz: Quiz) => {
     const updated = [newQuiz, ...quizzes];
     setQuizzes(updated);
+    if (newQuiz.folder) {
+      try {
+        const saved = localStorage.getItem('testonline_custom_folders');
+        const list = saved ? JSON.parse(saved) : [];
+        if (!list.includes(newQuiz.folder)) {
+          list.push(newQuiz.folder);
+          localStorage.setItem('testonline_custom_folders', JSON.stringify(list));
+        }
+      } catch {
+        // ignore
+      }
+    }
     triggerAutoBackup(updated, classrooms, sessions);
   };
 
@@ -250,10 +262,30 @@ export default function App() {
       status: 'active',
       shareUrl: getStudentExamShareUrl(newSessionId),
       allowedAttempts: 5,
-      durationMinutes: quiz.durationMinutes,
+      durationMinutes: quiz.durationMinutes || 50,
       totalSubmissions: 0,
       maxSlots: 500,
-      isArenaMode: quiz.isInteractive
+      isArenaMode: quiz.isInteractive,
+      questionCount: (quiz.questions && quiz.questions.length > 0) ? quiz.questions.length : quiz.questionCount,
+      scoringConfig: {
+        totalPoints: 10,
+        durationMinutes: quiz.durationMinutes || 50,
+        part1PointPerQuestion: 0.25,
+        part2PointPerQuestion: 1.0,
+        part3PointPerQuestion: 0.25,
+        allowViewAnswerKey: true,
+        viewAnswerMinScore: 4.0,
+        allowAiTutorExplanation: true,
+      },
+      antiCheatConfig: {
+        maxTabSwitches: 3,
+        autoSubmitOnExceed: true,
+        requireFullscreen: false,
+        preventCopyPaste: true,
+        shuffleQuestions: true,
+        shuffleOptions: true,
+        blockAIInExam: true
+      }
     };
     const updatedSessions = [newSession, ...sessions];
     setSessions(updatedSessions);
@@ -571,6 +603,7 @@ export default function App() {
         isOpen={isCreateQuizModalOpen}
         onClose={() => setIsCreateQuizModalOpen(false)}
         onSaveQuiz={handleSaveQuiz}
+        availableFolders={Array.from(new Set(['CÔNG NGHỆ 12', 'ĐỀ THI HỌC KỲ', 'KIỂM TRA 15 PHÚT', ...quizzes.map(q => q.folder).filter(Boolean) as string[]]))}
       />
 
       {/* Edit Quiz Modal */}

@@ -29,15 +29,23 @@ interface CreateQuizModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSaveQuiz: (newQuiz: Quiz) => void;
+  availableFolders?: string[];
+  initialFolder?: string;
 }
 
 export const CreateQuizModal: React.FC<CreateQuizModalProps> = ({
   isOpen,
   onClose,
   onSaveQuiz,
+  availableFolders = ['CÔNG NGHỆ 12'],
+  initialFolder = 'CÔNG NGHỆ 12'
 }) => {
   const [activeTab, setActiveTab] = useState<'word' | 'ai' | 'paste'>('word');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Folder assignment
+  const [targetFolder, setTargetFolder] = useState<string>(() => initialFolder || availableFolders[0] || 'CÔNG NGHỆ 12');
+  const [customFolderName, setCustomFolderName] = useState('');
 
   // Common fields
   const [title, setTitle] = useState('');
@@ -244,6 +252,10 @@ export const CreateQuizModal: React.FC<CreateQuizModalProps> = ({
     const totalQ = questions.length;
     const bd = `${p1}-${p2}-${p3}-0`;
 
+    const resolvedFolder = (targetFolder === '__NEW__' && customFolderName.trim())
+      ? customFolderName.trim().toUpperCase()
+      : targetFolder || 'CÔNG NGHỆ 12';
+
     const created: Quiz = {
       id: 'quiz-' + Date.now(),
       title: title.trim(),
@@ -255,7 +267,7 @@ export const CreateQuizModal: React.FC<CreateQuizModalProps> = ({
       breakdown: bd,
       durationMinutes,
       totalPoints: 10,
-      folder: subject.toUpperCase(),
+      folder: resolvedFolder,
       isInteractive,
       questions: questions,
     };
@@ -281,7 +293,7 @@ export const CreateQuizModal: React.FC<CreateQuizModalProps> = ({
                 </span>
               </div>
               <p className="text-xs text-teal-100">
-                Nhận dạng đề Word (.docx) • Tự động bóc tách đáp án gạch chân • Trường THPT Mang Thít
+                Nhận dạng đề Word (.docx) • Tự động bóc tách đáp án gạch chân • Chuẩn Bộ GD&ĐT
               </p>
             </div>
           </div>
@@ -548,7 +560,31 @@ A. 1234`}
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-slate-700 mb-1 font-bold">Thư mục lưu trữ:</label>
+                <select
+                  value={targetFolder}
+                  onChange={(e) => setTargetFolder(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:border-teal-500 font-semibold text-slate-800"
+                >
+                  {(availableFolders && availableFolders.length > 0 ? availableFolders : ['CÔNG NGHỆ 12']).map((f) => (
+                    <option key={f} value={f}>📁 {f}</option>
+                  ))}
+                  <option value="__NEW__">➕ Tạo thư mục mới...</option>
+                </select>
+                {targetFolder === '__NEW__' && (
+                  <input
+                    type="text"
+                    required
+                    placeholder="Nhập tên thư mục mới..."
+                    value={customFolderName}
+                    onChange={(e) => setCustomFolderName(e.target.value)}
+                    className="mt-2 w-full px-3 py-1.5 border-2 border-teal-500 rounded-xl text-xs font-bold bg-teal-50/50"
+                  />
+                )}
+              </div>
+
               <div>
                 <label className="block text-slate-700 mb-1 font-bold">Môn học:</label>
                 <select

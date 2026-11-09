@@ -74,6 +74,19 @@ export interface AntiCheatConfig {
   blockAIInExam: boolean; // strictly block AI tutor during live exam
 }
 
+export interface ExamScoringConfig {
+  totalPoints: number; // Mặc định 10.0đ (Thông tư 22)
+  durationMinutes: number; // Thời gian làm bài
+  // Điểm số mỗi câu ở từng phần:
+  part1PointPerQuestion: number; // Điểm mỗi câu Phần I (Mặc định 0.25đ)
+  part2PointPerQuestion: number; // Điểm tối đa mỗi câu Phần II (Mặc định 1.0đ theo chuẩn 0.1-0.25-0.5-1.0)
+  part3PointPerQuestion: number; // Điểm mỗi câu Phần III (Mặc định 0.25đ hoặc tùy chỉnh)
+  // Tùy chọn xem đáp án & điều kiện đủ điểm
+  allowViewAnswerKey: boolean; // Cho phép xem đáp án sau khi nộp (true / false)
+  viewAnswerMinScore: number; // Đủ bao nhiêu điểm mới mở đáp án đúng (Mặc định: 4.0 điểm)
+  allowAiTutorExplanation: boolean; // Mở Gia sư AI giải thích sau khi thi
+}
+
 export interface ExamSession {
   id: string;
   title: string;
@@ -92,6 +105,7 @@ export interface ExamSession {
   isArenaMode?: boolean;
   questionCount?: number;
   antiCheatConfig?: AntiCheatConfig;
+  scoringConfig?: ExamScoringConfig;
 }
 
 export interface CheatLog {

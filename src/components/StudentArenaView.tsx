@@ -76,6 +76,15 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
   const resolvedAllowedAttempts = session?.allowedAttempts ?? 3; // 0 = unlimited
   const resolvedMaxTabSwitches = session?.antiCheatConfig?.maxTabSwitches ?? 3;
 
+  // Dynamic scoring & view-answer thresholds configured by teacher
+  const scoringConfig = session?.scoringConfig;
+  const resolvedTotalPoints = scoringConfig?.totalPoints ?? 10.0;
+  const resolvedAllowViewKey = scoringConfig?.allowViewAnswerKey ?? true;
+  const resolvedMinScoreToUnlock = scoringConfig?.viewAnswerMinScore ?? 4.0;
+  const resolvedPart1PerQ = scoringConfig?.part1PointPerQuestion ?? 0.25;
+  const resolvedPart2PerQ = scoringConfig?.part2PointPerQuestion ?? 1.0;
+  const resolvedPart3PerQ = scoringConfig?.part3PointPerQuestion ?? 0.25;
+
   // Student Info
   const [studentName, setStudentName] = useState('Nguyễn Thành Nam');
   const [studentInfo, setStudentInfo] = useState('12A5 - SBD: 052');
@@ -387,7 +396,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
     questions.forEach((q) => {
       const ans = answers[q.id];
       if (q.partType === 'part2_true_false') {
-        totalMaxPoints += 1.0;
+        totalMaxPoints += resolvedPart2PerQ;
         if (!ans || Object.keys(ans).length === 0) {
           unansweredCount++;
         } else {
@@ -398,17 +407,17 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
             }
           });
           // Circular 7991 grading rule:
-          // 1 correct item: 0.1 pt
-          // 2 correct items: 0.25 pt
-          // 3 correct items: 0.5 pt
-          // 4 correct items: 1.0 pt
-          let qPt = 0;
-          if (subCorrect === 1) qPt = 0.1;
-          else if (subCorrect === 2) qPt = 0.25;
-          else if (subCorrect === 3) qPt = 0.5;
-          else if (subCorrect === 4) qPt = 1.0;
+          // 1 correct item: 10%
+          // 2 correct items: 25%
+          // 3 correct items: 50%
+          // 4 correct items: 100%
+          let qRatio = 0;
+          if (subCorrect === 1) qRatio = 0.1;
+          else if (subCorrect === 2) qRatio = 0.25;
+          else if (subCorrect === 3) qRatio = 0.5;
+          else if (subCorrect === 4) qRatio = 1.0;
 
-          earnedPoints += qPt;
+          earnedPoints += qRatio * resolvedPart2PerQ;
           if (subCorrect === 4) {
             correctCount++;
           } else if (subCorrect > 0) {
@@ -419,7 +428,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
           }
         }
       } else if (q.partType === 'part3_short_answer') {
-        totalMaxPoints += 0.25;
+        totalMaxPoints += resolvedPart3PerQ;
         const expected = (q.shortAnswerCorrect || q.correctAnswer || '1234').toString().trim().toLowerCase();
         const studentAns = (ans || '').toString().trim().toLowerCase();
         const normExpected = expected.replace(/\./g, ',');
@@ -427,18 +436,18 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
         if (!ans) {
           unansweredCount++;
         } else if (normStudent === normExpected) {
-          earnedPoints += 0.25;
+          earnedPoints += resolvedPart3PerQ;
           correctCount++;
         } else {
           wrongCount++;
         }
       } else {
         // Part 1 choice
-        totalMaxPoints += 0.25;
+        totalMaxPoints += resolvedPart1PerQ;
         if (!ans) {
           unansweredCount++;
         } else if (ans === q.correctAnswer) {
-          earnedPoints += 0.25;
+          earnedPoints += resolvedPart1PerQ;
           correctCount++;
         } else {
           wrongCount++;
@@ -446,13 +455,13 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
       }
     });
 
-    // Thông tư 22/BGDĐT: Mọi đề thi dù bất kể bao nhiêu câu đều quy về thang điểm 10.0 (làm tròn 2 chữ số thập phân)
+    // Thông tư 22/BGDĐT: Quy đổi chuẩn theo cấu hình điểm số (làm tròn 2 chữ số thập phân)
     const rawScore = totalMaxPoints > 0
-      ? (earnedPoints / totalMaxPoints) * 10
-      : (correctCount / (questions.length || 1)) * 10;
+      ? (earnedPoints / totalMaxPoints) * resolvedTotalPoints
+      : (correctCount / (questions.length || 1)) * resolvedTotalPoints;
     const calculatedScore = disqualified
       ? 0
-      : Math.min(10.0, Math.max(0.0, +(Math.round(rawScore * 100) / 100).toFixed(2)));
+      : Math.min(resolvedTotalPoints, Math.max(0.0, +(Math.round(rawScore * 100) / 100).toFixed(2)));
     const duration = resolvedDurationMinutes * 60 - secondsRemaining;
 
     // Call Realtime Engine: Auto-grades & instantly transmits back to Teacher Dashboard!
@@ -461,7 +470,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
       studentName: studentName || 'Học sinh ẩn danh',
       studentInfo: studentInfo || 'Lớp 12A5',
       score: calculatedScore,
-      totalPoints: 10.0,
+      totalPoints: resolvedTotalPoints,
       correctAnswersCount: correctCount,
       wrongAnswersCount: wrongCount,
       unansweredCount,
@@ -568,7 +577,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
               Hệ Thống Khảo Sát Trực Tuyến
             </span>
             <span className="bg-teal-700/90 text-white text-xs font-bold px-3 py-1 rounded-full uppercase">
-              Công nghệ 12 • THPT Mang Thít
+              Chuẩn Thông tư 22
             </span>
             <span className="bg-emerald-500/80 text-white text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1">
               <ShieldCheck className="w-3.5 h-3.5" /> Chống gian lận AI Proctor
@@ -581,7 +590,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
               {resolvedTitle}
             </h1>
             <p className="text-teal-200/80 text-xs sm:text-sm font-medium">
-              Giáo viên giao đề: <span className="font-bold text-teal-300">Thầy Hồ Tấn Khải</span> • Trường THPT Mang Thít
+              Giáo viên giao đề: <span className="font-bold text-teal-300">Thầy Hồ Tấn Khải</span>
             </p>
           </div>
 
@@ -1003,81 +1012,21 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
           </div>
         )}
 
-        {/* 2. PHẦN III: TRẢ LỜI NGẮN (TỐI ĐA 4 KÝ TỰ, HỖ TRỢ SỐ, DẤU "-", ",", ".") */}
+        {/* 2. PHẦN III: TRẢ LỜI NGẮN (CHỈ CẦN Ô NHẬP ĐÁP ÁN ĐỂ HỌC SINH GHI SỐ VÀO) */}
         {currentQ.partType === 'part3_short_answer' && (
-          <div className="bg-[#052b2d]/70 backdrop-blur-xs border border-teal-300/30 rounded-2xl p-5 text-center max-w-lg mx-auto w-full space-y-4 my-2 shadow-xl flex-1 flex flex-col justify-center">
-            <div className="text-xs text-teal-200 font-bold uppercase tracking-wider">
-              Nhập trả lời ngắn (tối đa 4 ký tự, hỗ trợ số, dấu &quot;-&quot;, &quot;,&quot;, &quot;.&quot;):
-            </div>
-            <div className="flex justify-center items-center gap-2">
-              <input
-                type="text"
-                maxLength={4}
-                value={userAnswers[currentQ.id] || ''}
-                onChange={(e) => handleShortAnswerChange(e.target.value)}
-                placeholder="vd: 5, -2, 3,5"
-                className="w-48 text-center text-3xl font-black font-mono tracking-widest bg-white text-slate-900 border-4 border-amber-300 rounded-2xl py-2.5 px-4 shadow-inner focus:outline-none focus:ring-4 focus:ring-teal-300"
-              />
-            </div>
-            {/* On-screen tactile touch keypad */}
-            <div className="grid grid-cols-5 gap-2 max-w-xs mx-auto pt-1">
-              {['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'].map((digit) => (
-                <button
-                  key={digit}
-                  type="button"
-                  onClick={() => {
-                    const cur = userAnswers[currentQ.id] || '';
-                    if (cur.length < 4) {
-                      handleShortAnswerChange(cur + digit);
-                    }
-                  }}
-                  className="btn-3d btn-3d-slate py-2 text-sm font-black rounded-xl text-white cursor-pointer"
-                >
-                  {digit}
-                </button>
-              ))}
-            </div>
-            <div className="flex justify-center gap-2 pt-1 text-xs">
-              <button
-                type="button"
-                onClick={() => {
-                  const cur = userAnswers[currentQ.id] || '';
-                  handleShortAnswerChange(cur.slice(0, -1));
-                }}
-                className="btn-3d btn-3d-slate px-3 py-1.5 rounded-xl text-white cursor-pointer"
-              >
-                Xóa 1 ký tự
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const cur = userAnswers[currentQ.id] || '';
-                  if (cur.length < 4) handleShortAnswerChange(cur + '-');
-                }}
-                className="btn-3d btn-3d-slate px-3 py-1.5 rounded-xl font-bold text-white cursor-pointer"
-                title="Dấu trừ (-)"
-              >
-                - (Trừ)
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const cur = userAnswers[currentQ.id] || '';
-                  if (cur.length < 4) handleShortAnswerChange(cur + ',');
-                }}
-                className="btn-3d btn-3d-slate px-3 py-1.5 rounded-xl font-bold text-white cursor-pointer"
-                title="Dấu phẩy (,)"
-              >
-                , (Phẩy)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleShortAnswerChange('')}
-                className="btn-3d btn-3d-slate px-3 py-1.5 rounded-xl text-white cursor-pointer"
-              >
-                Xóa trắng
-              </button>
-            </div>
+          <div className="bg-[#052b2d]/70 backdrop-blur-xs border border-teal-300/30 rounded-2xl p-8 text-center max-w-md mx-auto w-full my-4 shadow-xl flex-1 flex flex-col justify-center items-center gap-4">
+            <span className="text-xs text-teal-200 font-bold uppercase tracking-wider">
+              Nhập câu trả lời ngắn:
+            </span>
+            <input
+              type="text"
+              maxLength={4}
+              value={userAnswers[currentQ.id] || ''}
+              onChange={(e) => handleShortAnswerChange(e.target.value)}
+              placeholder="Nhập đáp án..."
+              autoFocus
+              className="w-56 text-center text-3xl font-black font-mono tracking-widest bg-white text-slate-900 border-4 border-amber-300 rounded-2xl py-3 px-4 shadow-inner focus:outline-none focus:ring-4 focus:ring-teal-300 transition-all placeholder:text-slate-300 placeholder:text-lg placeholder:font-normal"
+            />
           </div>
         )}
 
@@ -1407,7 +1356,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
     const unansweredCount = finalSubmission.unansweredCount ?? 0;
     const correctCount = finalSubmission.correctAnswersCount;
     const score = finalSubmission.score;
-    const isAnswerKeyUnlocked = (score ?? 0) >= 4.0;
+    const isAnswerKeyUnlocked = resolvedAllowViewKey && (score ?? 0) >= resolvedMinScoreToUnlock;
 
     // Academic grade rating
     let gradeLabel = 'TRUNG BÌNH';
@@ -1492,25 +1441,35 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
             </div>
           </div>
 
-          {/* Answer Key Unlock Status Banner (Thang điểm 10 theo TT22 & Khóa/Mở khi >= 4.0 điểm) */}
-          {isAnswerKeyUnlocked ? (
+          {/* Answer Key Unlock Status Banner */}
+          {!resolvedAllowViewKey ? (
+            <div className="p-4 bg-slate-900/80 border-2 border-slate-500 rounded-2xl text-left text-xs space-y-1 text-slate-300 shadow-md">
+              <div className="font-black flex items-center gap-2 text-slate-200 text-sm">
+                <Lock className="w-4 h-4 text-slate-400" />
+                <span>🔒 GIÁO VIÊN ĐÃ TẮT CHẾ ĐỘ XEM ĐÁP ÁN ĐỐI VỚI ĐỀ THI NÀY</span>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Theo cấu hình của giáo viên, bài thi này không công bố đáp án chi tiết cho học sinh. Điểm số của bạn đã được ghi nhận vào hệ thống.
+              </p>
+            </div>
+          ) : isAnswerKeyUnlocked ? (
             <div className="p-3.5 bg-emerald-950/80 border-2 border-emerald-400/60 rounded-2xl text-left text-xs space-y-1 text-emerald-200 shadow-md">
               <div className="font-black flex items-center gap-2 text-emerald-300 text-sm">
                 <Unlock className="w-4 h-4 text-emerald-400" />
-                <span>🔓 ĐÃ MỞ KHÓA TOÀN BỘ ĐÁP ÁN ĐÚNG & GIA SƯ AI (ĐẠT {score}/10 ≥ 4.0 ĐIỂM)</span>
+                <span>🔓 ĐÃ MỞ KHÓA TOÀN BỘ ĐÁP ÁN ĐÚNG & GIA SƯ AI (ĐẠT {score}/10 ≥ {resolvedMinScoreToUnlock.toFixed(1)} ĐIỂM)</span>
               </div>
               <p className="text-[11px] text-emerald-300/80 leading-relaxed">
-                Chúc mừng bạn! Kết quả bài làm đạt chuẩn từ 4.0 điểm trở lên. Bạn có thể xem toàn bộ đáp án chuẩn và nhận hỗ trợ phân tích từ Gia sư AI Gemini 3.8 Flash!
+                Chúc mừng bạn! Kết quả bài làm đạt chuẩn từ {resolvedMinScoreToUnlock.toFixed(1)} điểm trở lên. Bạn có thể xem toàn bộ đáp án chuẩn và nhận hỗ trợ phân tích từ Gia sư AI Gemini 3.8 Flash!
               </p>
             </div>
           ) : (
             <div className="p-4 bg-amber-950/80 border-2 border-amber-400/70 rounded-2xl text-left text-xs space-y-2 text-amber-200 shadow-lg">
               <div className="font-black flex items-center gap-2 text-amber-300 text-sm">
                 <Lock className="w-5 h-5 text-amber-400 shrink-0" />
-                <span>🔒 CHẾ ĐỘ KHÓA ĐÁP ÁN ĐÚNG (YÊU CẦU ĐẠT TỪ 4.0 ĐIỂM TRỞ LÊN)</span>
+                <span>🔒 CHẾ ĐỘ KHÓA ĐÁP ÁN ĐÚNG (YÊU CẦU ĐẠT TỪ {resolvedMinScoreToUnlock.toFixed(1)} ĐIỂM TRỞ LÊN)</span>
               </div>
               <p className="text-xs text-amber-100/90 leading-relaxed">
-                Điểm số hiện tại của bạn là <strong className="text-amber-300 font-mono text-sm">{score}/10 điểm</strong> (theo thang điểm 10 Thông tư 22/BGDĐT). Theo quy định, chỉ học sinh đạt <strong className="text-amber-300 font-bold">từ 4.0 điểm trở lên</strong> mới được mở khóa xem đáp án đúng và hướng dẫn giải từ Gia sư AI.
+                Điểm số hiện tại của bạn là <strong className="text-amber-300 font-mono text-sm">{score}/10 điểm</strong> (theo thang điểm 10 Thông tư 22/BGDĐT). Theo quy định, chỉ học sinh đạt <strong className="text-amber-300 font-bold">từ {resolvedMinScoreToUnlock.toFixed(1)} điểm trở lên</strong> mới được mở khóa xem đáp án đúng và hướng dẫn giải từ Gia sư AI.
               </p>
               <div className="p-2.5 bg-black/40 rounded-xl border border-amber-400/30 text-[11px] text-amber-200/90 flex items-center gap-2">
                 <RotateCcw className="w-4 h-4 text-amber-400 shrink-0" />
@@ -1817,7 +1776,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                                   ) : (
                                     <span className="text-[10px] bg-amber-500/20 text-amber-200 border border-amber-400/40 px-2 py-1 rounded-md font-bold flex items-center gap-1">
                                       <Lock className="w-3 h-3 text-amber-400" />
-                                      Đáp án chuẩn: 🔒 Cần ≥ 4.0đ
+                                      Đáp án chuẩn: 🔒 Cần ≥ {resolvedMinScoreToUnlock.toFixed(1)}đ
                                     </span>
                                   )}
                                 </div>
@@ -1842,7 +1801,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                           <div className="flex items-center gap-2">
                             {isAnswerKeyUnlocked ? (
                               <>
-                                <span className="text-slate-300">Đáp án 4 ký tự chuẩn:</span>
+                                <span className="text-slate-300">Đáp án chuẩn:</span>
                                 <span className="font-mono text-base font-black bg-emerald-400 text-emerald-950 px-2.5 py-0.5 rounded-lg shadow-sm">
                                   {q.shortAnswerCorrect || q.correctAnswer || '1234'}
                                 </span>
@@ -1850,7 +1809,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                             ) : (
                               <span className="text-xs font-mono font-bold bg-amber-500/20 text-amber-200 border border-amber-400/40 px-2.5 py-1 rounded-lg flex items-center gap-1">
                                 <Lock className="w-3.5 h-3.5 text-amber-400" />
-                                Đáp án chuẩn: 🔒 Khóa (Cần ≥ 4.0đ)
+                                Đáp án chuẩn: 🔒 Khóa (Cần ≥ {resolvedMinScoreToUnlock.toFixed(1)}đ)
                               </span>
                             )}
                           </div>
@@ -2225,7 +2184,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                                 </span>
                               </div>
                               <div className="p-2 bg-emerald-950/60 rounded-lg text-emerald-200 border border-emerald-500/30">
-                                <strong>Đáp án đúng:</strong> {isAnswerKeyUnlocked ? (q.partType === 'part2_true_false' ? (q.correctAnswer || 'Xem chi tiết') : q.partType === 'part3_short_answer' ? (q.shortAnswerCorrect || '1234') : `${q.correctAnswer}. ${correctChoiceObj?.text || ''}`) : '🔒 Khóa (Cần ≥ 4.0đ)'}
+                                <strong>Đáp án đúng:</strong> {isAnswerKeyUnlocked ? (q.partType === 'part2_true_false' ? (q.correctAnswer || 'Xem chi tiết') : q.partType === 'part3_short_answer' ? (q.shortAnswerCorrect || '1234') : `${q.correctAnswer}. ${correctChoiceObj?.text || ''}`) : `🔒 Khóa (Cần ≥ ${resolvedMinScoreToUnlock.toFixed(1)}đ)`}
                               </div>
                             </div>
                           );

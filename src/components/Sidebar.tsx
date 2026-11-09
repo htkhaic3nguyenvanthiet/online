@@ -61,7 +61,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
           <span className="font-extrabold text-white text-base tracking-wide uppercase">TEST ONLINE</span>
           <span className="text-[11px] text-teal-200 font-semibold">Tác giả: Hồ Tấn Khải</span>
-          <span className="text-[10px] text-teal-300/80">Trường THPT Mang Thít</span>
+          <span className="text-[10px] text-teal-300/80">Hệ thống khảo thí số</span>
         </div>
       </div>
 
@@ -99,14 +99,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
         })}
       </nav>
 
-      {/* School info card footer */}
+      {/* System info card footer */}
       <div className="p-3 m-3 bg-teal-900/60 rounded-xl border border-teal-700/50 text-[11px]">
         <div className="flex items-center gap-2 mb-1.5 font-bold text-teal-100">
           <Award className="w-4 h-4 text-amber-400" />
-          <span>Hệ thống trường học</span>
+          <span>Hệ thống khảo thí</span>
         </div>
         <p className="text-teal-200 text-[10px] leading-relaxed">
-          Trường THPT Mang Thít - Tác giả: Hồ Tấn Khải. Hệ thống thi trắc nghiệm tốc độ cao.
+          Tác giả: Thầy Hồ Tấn Khải. Hệ thống thi trắc nghiệm tốc độ cao chuẩn Thông tư 22.
         </p>
       </div>
     </aside>
