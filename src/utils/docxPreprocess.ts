@@ -21,6 +21,12 @@
  */
 import JSZip from 'jszip';
 import { ommlToLatex, ommlToPlainText } from './omml';
+import { convertWmfToSvg } from './wmfToSvg';
+import { extractMathTypeTex, texToPlain } from './mathTypeTex';
+import {
+  normalizeAnswerMarking,
+  AnswerSignalStats,
+} from './answerMarking';
 
 export interface MathSegment {
   latex: string;
@@ -36,6 +42,14 @@ export interface DocxPreprocessResult {
   imageDataUris: string[];
   /** Human-readable import warnings (Vietnamese), never blocking. */
   warnings: string[];
+  /** How the file's answers were marked (gạch chân/màu chữ/tô nền/in đậm). */
+  answerSignalStats: AnswerSignalStats | null;
+  /** MathType equations recovered as genuine LaTeX from their OLE binaries. */
+  mathtypeTexCount: number;
+  /** WMF previews (MathType) converted to inline SVG. */
+  wmfConvertedCount: number;
+  /** MathType objects with neither a TeX stream nor a convertible preview. */
+  mathtypeFallbackCount: number;
 }
 
 const W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
@@ -114,6 +128,49 @@ function findImageRelId(unit: any): string {
     }
   }
   return '';
+}
+
+function findOleRelId(unit: any): string {
+  // <o:OLEObject r:id="…"/> inside a <w:object> → embeddings/*.bin
+  const all = unit.getElementsByTagName ? unit.getElementsByTagName('*') : [];
+  for (let i = 0; i < all.length; i++) {
+    if (localTag(all[i]) === 'oleobject') {
+      const rid =
+        all[i].getAttribute('r:id') || all[i].getAttribute('r:embed') || '';
+      if (rid) return rid;
+    }
+  }
+  return '';
+}
+
+/** Display size (pt) of an embedded object, from its VML shape style or wp:extent. */
+function findShapeSizePt(unit: any): { widthPt?: number; heightPt?: number } | undefined {
+  const all = unit.getElementsByTagName ? unit.getElementsByTagName('*') : [];
+  for (let i = 0; i < all.length; i++) {
+    const el = all[i];
+    const style = el.getAttribute ? el.getAttribute('style') : null;
+    if (style) {
+      const wm = style.match(/width:\s*([\d.]+)pt/i);
+      const hm = style.match(/height:\s*([\d.]+)pt/i);
+      if (wm || hm) {
+        return {
+          widthPt: wm ? parseFloat(wm[1]) : undefined,
+          heightPt: hm ? parseFloat(hm[1]) : undefined,
+        };
+      }
+    }
+    if (localTag(el) === 'extent') {
+      const cx = parseFloat(el.getAttribute('cx') || '');
+      const cy = parseFloat(el.getAttribute('cy') || '');
+      if (cx > 0 || cy > 0) {
+        return {
+          widthPt: cx > 0 ? cx / 12700 : undefined,
+          heightPt: cy > 0 ? cy / 12700 : undefined,
+        };
+      }
+    }
+  }
+  return undefined;
 }
 
 function mimeFromPath(path: string): string {
@@ -230,6 +287,7 @@ export async function preprocessDocx(arrayBuffer: ArrayBuffer): Promise<DocxPrep
 
   // --- relationship map: rId -> zip path ----------------------------------
   const relTargets = new Map<string, string>();
+  const oleTargets = new Map<string, string>();
   const relsFile = zip.file('word/_rels/document.xml.rels');
   if (relsFile) {
     const relsXml = await relsFile.async('string');
@@ -241,9 +299,13 @@ export async function preprocessDocx(arrayBuffer: ArrayBuffer): Promise<DocxPrep
         const target = rels[i].getAttribute('Target') || '';
         const type = rels[i].getAttribute('Type') || '';
         if (!id || !target || /external/i.test(rels[i].getAttribute('TargetMode') || '')) continue;
+        const path = (target.startsWith('/') ? target.slice(1) : `word/${target.replace(/^\.\//, '')}`).replace(/\/\.\.\//g, '/');
+        if (/oleobject/i.test(type)) {
+          oleTargets.set(id, path);
+          continue;
+        }
         if (!type.includes('image') && !/\.(png|jpe?g|gif|bmp|svg|webp|emf|wmf)$/i.test(target)) continue;
-        const path = target.startsWith('/') ? target.slice(1) : `word/${target.replace(/^\.\//, '')}`;
-        relTargets.set(id, path.replace(/\/\.\.\//g, '/'));
+        relTargets.set(id, path);
       }
     }
   }
@@ -253,6 +315,39 @@ export async function preprocessDocx(arrayBuffer: ArrayBuffer): Promise<DocxPrep
   const imageDataUris: string[] = [];
 
   const serializer = new ctors.XMLSerializer();
+
+  // --- 0. Answer-marking normalisation -------------------------------------
+  // Teachers mark answers by underline, colour, highlight or bold — in any
+  // combination. Detect, per question, which dimension actually singles
+  // out the answer(s) and, when it is not underline, inject underline so
+  // the existing parser reads the answers natively. Bộ-style files (winner
+  // = underline) are left byte-equivalent.
+  let answerSignalStats: AnswerSignalStats | null = null;
+  try {
+    answerSignalStats = normalizeAnswerMarking(doc);
+    const s = answerSignalStats;
+    if (s.bySignal.color > 0) {
+      warnings.push(`Nhận diện đáp án theo màu chữ: ${s.bySignal.color} câu.`);
+    }
+    if (s.bySignal.highlight > 0) {
+      warnings.push(`Nhận diện đáp án theo tô nền (highlight): ${s.bySignal.highlight} câu.`);
+    }
+    if (s.bySignal.bold > 0) {
+      warnings.push(`Nhận diện đáp án theo in đậm: ${s.bySignal.bold} câu.`);
+    }
+    if (s.conflicts > 0) {
+      warnings.push(
+        `Có ${s.conflicts} câu có nhiều kiểu đánh dấu đáp án không thống nhất — đã ưu tiên theo thứ tự: gạch chân → màu chữ → tô nền → in đậm.`
+      );
+    }
+    if (s.undeterminedPart1 > 0) {
+      warnings.push(
+        `Có ${s.undeterminedPart1} câu trắc nghiệm không nhận diện được đáp án từ định dạng trong file (đáp án tạm để phương án A) — Thầy vui lòng kiểm tra lại các câu này.`
+      );
+    }
+  } catch {
+    answerSignalStats = null;
+  }
 
   // --- 1. OMML formulas → ⟦MATH{i}⟧ tokens --------------------------------
   const oMathList: any[] = [];
@@ -308,32 +403,80 @@ export async function preprocessDocx(arrayBuffer: ArrayBuffer): Promise<DocxPrep
   const consumedRoots = new Set<any>();
   let unreadableImages = 0;
   let oleWithoutPreview = 0;
+  let mathtypeTexCount = 0;
+  let wmfConvertedCount = 0;
+  let mathtypeFallbackCount = 0;
+  let mtExtraSkipped = 0;
 
   for (const unit of units) {
     if (isConsumed(unit, consumedRoots)) continue;
     if (!unit.parentNode && localTag(unit) !== 'object') continue;
+
+    // --- MathType OLE: recover the real formula when possible -------------
+    let objectBinPath: string | undefined;
+    if (localTag(unit) === 'object') {
+      const oleRelId = findOleRelId(unit);
+      objectBinPath = oleRelId ? oleTargets.get(oleRelId) : undefined;
+      if (objectBinPath) {
+        const binFile = zip.file(objectBinPath);
+        if (binFile) {
+          const binBytes = await binFile.async('uint8array');
+          const tex = extractMathTypeTex(binBytes);
+          if (tex) {
+            // Best outcome: the equation becomes genuine, searchable LaTeX
+            // rendered by KaTeX — bound at its exact inline position.
+            const idx = mathSegments.length;
+            mathSegments.push({ latex: tex, plain: texToPlain(tex), ommlXml: '' });
+            mathtypeTexCount++;
+            consumedRoots.add(unit);
+            replaceWithToken(doc, unit, `⟦MATH${idx}⟧`);
+            continue;
+          }
+        }
+      }
+    }
 
     const relId = findImageRelId(unit);
     const mediaPath = relId ? relTargets.get(relId) : undefined;
     const mime = mediaPath ? mimeFromPath(mediaPath) : '';
 
     if (localTag(unit) === 'object' && !mediaPath) {
-      // Classic MathType/OLE without even a preview image: nothing truthful
-      // can be shown — count it for the warning and leave the node alone.
-      oleWithoutPreview++;
+      // OLE without any preview image: if it is a MathType bin we know the
+      // formula exists but cannot be recovered — count it honestly.
+      if (objectBinPath) mathtypeFallbackCount++;
+      else oleWithoutPreview++;
       consumedRoots.add(unit);
       continue;
     }
 
     let dataUri = '';
-    if (mediaPath && mime) {
+    let countedAsMathtypeFallback = false;
+    if (mediaPath && /\.wmf$/i.test(mediaPath)) {
+      // WMF previews (MathType) are vector metafiles browsers cannot show.
+      // Convert to SVG; the SVG data URI bypasses the canvas raster
+      // compression below so the vectors stay crisp.
+      const mediaFile = zip.file(mediaPath);
+      if (mediaFile) {
+        const bytes = await mediaFile.async('uint8array');
+        const conv = convertWmfToSvg(bytes, findShapeSizePt(unit));
+        if (conv) {
+          dataUri = `data:image/svg+xml;base64,${bytesToBase64(new TextEncoder().encode(conv.svg))}`;
+          wmfConvertedCount++;
+          mtExtraSkipped += conv.skippedMtExtraRuns;
+        }
+      }
+      if (!dataUri && localTag(unit) === 'object' && objectBinPath) {
+        mathtypeFallbackCount++;
+        countedAsMathtypeFallback = true;
+      }
+    } else if (mediaPath && mime) {
       const mediaFile = zip.file(mediaPath);
       if (mediaFile) {
         const bytes = await mediaFile.async('uint8array');
         dataUri = await compressImageDataUri(bytes, mime);
       }
     }
-    if (!dataUri) unreadableImages++;
+    if (!dataUri && !countedAsMathtypeFallback) unreadableImages++;
 
     const idx = imageDataUris.length;
     imageDataUris.push(dataUri);
@@ -350,11 +493,30 @@ export async function preprocessDocx(arrayBuffer: ArrayBuffer): Promise<DocxPrep
       `File có ${oleWithoutPreview} đối tượng OLE (thường là công thức MathType) không có hình xem trước — hệ thống chưa đọc được dạng này, vị trí đó sẽ bị trống trong đề.`
     );
   }
+  if (mathtypeFallbackCount > 0) {
+    warnings.push(
+      `Có ${mathtypeFallbackCount} công thức MathType không đọc được cả bản chữ (TeX) lẫn hình xem trước — vị trí công thức sẽ hiện khung cảnh báo trong đề.`
+    );
+  }
+  if (mtExtraSkipped > 0) {
+    warnings.push(
+      `Có ${mtExtraSkipped} công thức chứa ký hiệu đặc biệt (phông MT Extra) chưa hiển thị được đầy đủ trong bản xem trước.`
+    );
+  }
 
   // --- 3. Re-zip with the tokenised document.xml ---------------------------
   const newXml = serializer.serializeToString(doc);
   zip.file('word/document.xml', newXml);
   const outBuffer = await zip.generateAsync({ type: 'arraybuffer', compression: 'DEFLATE' });
 
-  return { arrayBuffer: outBuffer, mathSegments, imageDataUris, warnings };
+  return {
+    arrayBuffer: outBuffer,
+    mathSegments,
+    imageDataUris,
+    warnings,
+    answerSignalStats,
+    mathtypeTexCount,
+    wmfConvertedCount,
+    mathtypeFallbackCount,
+  };
 }

@@ -1,6 +1,7 @@
 import mammoth from 'mammoth';
 import { Question, OptionKey, SubQuestionItem, Quiz } from '../types/quiz';
 import { preprocessDocx, MathSegment } from './docxPreprocess';
+import { AnswerSignalStats } from './answerMarking';
 import { DEFAULT_SUBJECT, isKnownSubject } from '../data/subjects';
 
 export interface ParsedExamResult {
@@ -24,6 +25,12 @@ export interface ParsedExamResult {
   part3Violations: Part3Violation[];
   // Cảnh báo import khác (công thức/hình không đọc được, phương án rỗng...).
   importWarnings: string[];
+  // Thống kê cách nhận diện đáp án trong file (gạch chân/màu chữ/tô nền/in đậm).
+  answerSignalStats?: AnswerSignalStats | null;
+  // Số công thức MathType khôi phục được thành LaTeX từ OLE (Phase D).
+  mathtypeTexCount?: number;
+  // Số hình xem trước WMF (MathType) đã chuyển thành SVG (Phase D).
+  wmfConvertedCount?: number;
 }
 
 /** Dữ liệu giàu trích từ .docx ở tầng tiền xử lí (xem docxPreprocess.ts). */
@@ -32,6 +39,9 @@ export interface ParseExtras {
   /** Data URI theo chỉ số token ⟦img:{i}⟧ toàn cục trong tài liệu. */
   imageDataUris?: string[];
   warnings?: string[];
+  answerSignalStats?: AnswerSignalStats | null;
+  mathtypeTexCount?: number;
+  wmfConvertedCount?: number;
 }
 
 export interface Part3Violation {
@@ -151,10 +161,14 @@ function findMarkerStart(body: string, key: string, punctClass: string): number 
   // </u>, which silently broke correct-answer detection (Phase A finding 2 —
   // worst when the next option's text was empty because mammoth dropped its
   // OMML formula, putting the marker immediately after </u></b>).
-  const re = new RegExp(`(?:<(?!\/(?:u|b|strong|i|em|sub|sup|del)>)[^>]*>|\\s)*(?:<u>)?(?:<strong>)?\\s*${key}[${punctClass}]`, 'gi');
+  // Between the letter and its punctuation, CLOSING inline tags ARE allowed:
+  // real teacher files split the marker across runs ("D" in one formatted
+  // run, ". " in the next), which mammoth renders as <u>D</u>. — the marker
+  // is real even though the dot sits outside the formatted run (Phase D).
+  const re = new RegExp(`((?:<(?!\/(?:u|b|strong|i|em|sub|sup|del)>)[^>]*>|\\s)*(?:<u>)?(?:<strong>)?\\s*)(${key})(?:<\/(?:u|b|strong|i|em)>)*[${punctClass}]`, 'gi');
   let m: RegExpExecArray | null;
   while ((m = re.exec(body)) !== null) {
-    const letterPos = m.index + m[0].length - 2;
+    const letterPos = m.index + m[1].length;
     const prev = letterPos > 0 ? body[letterPos - 1] : '';
     if (!/[A-Za-zÀ-ỹ]/.test(prev) && prev !== '(') return m.index;
   }
@@ -209,6 +223,76 @@ function extractPart3AnswersFromKey(answerSectionHtml: string): Map<number, stri
 }
 
 /**
+ * EduMix port — trailing answer-key maps for Phần I / Phần II.
+ * Teachers often append a key table at the end of the file ("1.A 2.B …",
+ * "Câu 1: Đ - S - Đ - S"). Phần I pairs are only collected from the key's
+ * Phần I region (the region before any PHẦN II/III heading, or after a
+ * PHẦN I heading); Phần II entries use EduMix's explicit Đ/S patterns
+ * (labelled "a) Đ b) S …", dash-separated "Đ - S - Đ - S", or compact
+ * "ĐSĐS"), which are specific enough to scan across the whole key.
+ */
+function splitKeyTextByPart(text: string): { p1: string; p2: string } {
+  const marks: { part: 1 | 2 | 3; index: number }[] = [];
+  const scan = (re: RegExp, part: 1 | 2 | 3) => {
+    const m = text.match(re);
+    if (m && m.index !== undefined) marks.push({ part, index: m.index });
+  };
+  scan(PART1_HEADING, 1);
+  scan(PART2_HEADING, 2);
+  scan(PART3_HEADING, 3);
+  marks.sort((a, b) => a.index - b.index);
+  if (marks.length === 0) return { p1: text, p2: '' };
+  let p1 = text.substring(0, marks[0].index);
+  let p2 = '';
+  marks.forEach((mk, i) => {
+    const end = i + 1 < marks.length ? marks[i + 1].index : text.length;
+    const seg = text.substring(mk.index, end);
+    if (mk.part === 1) p1 += `\n${seg}`;
+    else if (mk.part === 2) p2 += `\n${seg}`;
+  });
+  return { p1, p2 };
+}
+
+function extractPart1AnswersFromKey(answerSectionHtml: string): Map<number, string> {
+  const answers = new Map<number, string>();
+  if (!answerSectionHtml) return answers;
+  const text = stripHtml(answerSectionHtml.replace(/<img[^>]*>/gi, ''));
+  const { p1 } = splitKeyTextByPart(text);
+  const pairRegex = /(?:Câu\s*)?(\d{1,3})\s*[.:\-–—)\s]\s*([A-D])\b/g;
+  let pm: RegExpExecArray | null;
+  while ((pm = pairRegex.exec(p1)) !== null) {
+    const n = parseInt(pm[1], 10);
+    if (n >= 1 && n <= 200 && !answers.has(n)) answers.set(n, pm[2].toUpperCase());
+  }
+  return answers;
+}
+
+const P2_KEY_ENTRY =
+  /(?:Câu\s*)?(\d{1,2})\s*[.:\-–—)]\s*(?:a[).:\-\s]*([ĐDSstruefalse]+)[,;\s]+b[).:\-\s]*([ĐDSstruefalse]+)[,;\s]+c[).:\-\s]*([ĐDSstruefalse]+)[,;\s]+d[).:\-\s]*([ĐDSstruefalse]+)|([ĐDS])\s*[-–—,\s]\s*([ĐDS])\s*[-–—,\s]\s*([ĐDS])\s*[-–—,\s]\s*([ĐDS])|([ĐDS]{4}))\b/gi;
+
+function extractPart2AnswersFromKey(answerSectionHtml: string): Map<number, boolean[]> {
+  const answers = new Map<number, boolean[]>();
+  if (!answerSectionHtml) return answers;
+  const text = stripHtml(answerSectionHtml.replace(/<img[^>]*>/gi, ''));
+  P2_KEY_ENTRY.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = P2_KEY_ENTRY.exec(text)) !== null) {
+    const qNum = parseInt(m[1], 10);
+    let rawTokens: string[] = [];
+    if (m[2]) rawTokens = [m[2], m[3], m[4], m[5]];
+    else if (m[6]) rawTokens = [m[6], m[7], m[8], m[9]];
+    else if (m[10]) rawTokens = m[10].split('');
+    if (rawTokens.length === 4 && qNum >= 1 && qNum <= 50 && !answers.has(qNum)) {
+      answers.set(
+        qNum,
+        rawTokens.map((tk) => /^[ĐD]|true/i.test(tk.trim()))
+      );
+    }
+  }
+  return answers;
+}
+
+/**
  * Robust Circular 7991 HTML Parser:
  * Guarantees that EVERY authored question in the Word document is preserved.
  */
@@ -248,6 +332,9 @@ export function parseCircular7991Html(
   // The answer-key section is kept aside: Phần III answers live ONLY there.
   const answerSectionHtml = answerKeyIndex !== -1 ? normalizedHtml.substring(answerKeyIndex) : '';
   const part3KeyAnswers = extractPart3AnswersFromKey(answerSectionHtml);
+  // EduMix port: the same key section also carries Phần I / Phần II keys.
+  const part1KeyAnswers = extractPart1AnswersFromKey(answerSectionHtml);
+  const part2KeyAnswers = extractPart2AnswersFromKey(answerSectionHtml);
 
   let bodyEnd = normalizedHtml.length;
   if (answerKeyIndex !== -1) bodyEnd = Math.min(bodyEnd, answerKeyIndex);
@@ -438,7 +525,13 @@ export function parseCircular7991Html(
       }
     }
 
-    const cleanContent = htmlToRichText(questionHeadHtml).replace(/^.*?Câu\s*\d+[:.\-\s]\s*/i, '').trim();
+    // Anchored at block start: blocks are guaranteed to begin with "Câu N"
+    // (Câu-anchored path) or with stem text (structure-anchored path) —
+    // never strip a "Câu N" appearing mid-stem.
+    const cleanContent = htmlToRichText(questionHeadHtml).replace(/^\s*Câu\s*\d+[:.\-\s]\s*/i, '').trim();
+    const stemNumMatch = htmlToRichText(questionHeadHtml).match(/Câu\s*(\d+)\s*[:.]/i);
+    const stemNum = stemNumMatch ? parseInt(stemNumMatch[1], 10) : -1;
+    const seqIndex = part1Count + 1;
 
     const optionKeys: OptionKey[] = ['A', 'B', 'C', 'D'];
     const parsedOptions: { key: OptionKey; text: string; isCorrect: boolean }[] = [];
@@ -472,9 +565,15 @@ export function parseCircular7991Html(
           foundUnderline = true;
         }
 
-        const cleanOptText = htmlToRichText(optSnippet)
+        let cleanOptText = htmlToRichText(optSnippet)
           .replace(new RegExp(`^\\s*${currentKey}[\\.\\:\\)\\/]\\s*`, 'i'), '')
           .trim();
+        // Files whose options are bare formulas often carry a separator dot
+        // after each formula ("A. <công thức>. B. <công thức>."). When the
+        // whole option is just formula/image tokens plus that dot, drop it.
+        if (/^(?:⟦(?:MATH\d+|img:\d+)⟧\s*)+\.$/.test(cleanOptText)) {
+          cleanOptText = cleanOptText.replace(/\.\s*$/, '').trim();
+        }
 
         if (!cleanOptText) {
           // Never invent option content — keep a visible placeholder and warn.
@@ -501,6 +600,37 @@ export function parseCircular7991Html(
       });
     }
 
+    // EduMix fallback chain (formatting always wins):
+    //   1. an explicit statement inside the question ("Đáp án: B",
+    //      "Chọn B", "Đáp án đúng là B");
+    //   2. the trailing answer-key table at the end of the file;
+    //   3. nothing found → keep A as a placeholder BUT warn loudly
+    //      (EduMix doctrine: the system NEVER silently invents an answer).
+    let answerSource: 'format' | 'statement' | 'key' | 'none' = foundUnderline ? 'format' : 'none';
+    if (!foundUnderline) {
+      const blockText = htmlToRichText(block);
+      const stmt = blockText.match(
+        /(?:Đáp\s*án(?:\s*đúng)?(?:\s*là)?|Chọn(?:\s+đáp\s+án)?)\s*[:=]?\s*([A-D])\b/i
+      );
+      if (stmt) {
+        detectedCorrect = stmt[1].toUpperCase() as OptionKey;
+        answerSource = 'statement';
+      } else {
+        const keyAns =
+          part1KeyAnswers.get(seqIndex) ??
+          (stemNum !== -1 ? part1KeyAnswers.get(stemNum) : undefined);
+        if (keyAns) {
+          detectedCorrect = keyAns as OptionKey;
+          answerSource = 'key';
+        }
+      }
+      if (answerSource === 'none') {
+        partWarnings.push(
+          'Chưa nhận diện được đáp án từ file Word (không thấy định dạng đánh dấu, dòng "Đáp án:" hay bảng đáp án) — đáp án đang để tạm A, Thầy vui lòng chọn lại đáp án đúng.'
+        );
+      }
+    }
+
     // Ensure detected option has isCorrect true
     parsedOptions.forEach((opt) => {
       opt.isCorrect = (opt.key === detectedCorrect);
@@ -513,7 +643,12 @@ export function parseCircular7991Html(
       content: cleanContent || `Câu hỏi trắc nghiệm ${globalOrder - 1}`,
       options: parsedOptions,
       correctAnswer: detectedCorrect,
-      explanation: 'Đáp án được nhận diện tự động từ ký tự gạch chân trong file Word theo Thông tư 7991.',
+      explanation:
+        answerSource === 'key'
+          ? 'Đáp án lấy từ bảng đáp án ở cuối file Word.'
+          : answerSource === 'statement'
+            ? 'Đáp án ghi rõ trong câu hỏi ở file Word ("Đáp án: …").'
+            : 'Đáp án được nhận diện tự động từ định dạng đánh dấu (gạch chân/tô đỏ) trong file Word.',
       points: 0.25
     };
     if (partWarnings.length > 0) question.parseWarnings = partWarnings;
@@ -528,11 +663,12 @@ export function parseCircular7991Html(
   const parseAsPart2 = (block: string): boolean => {
     const aStart = findMarkerStart(block, 'a', '\\.\\:\\)');
     const questionPromptHtml = aStart === -1 ? '' : block.substring(0, aStart);
-    const cleanPrompt = htmlToRichText(questionPromptHtml).replace(/^.*?Câu\s*\d+[:.\-\s]\s*/i, '').trim();
+    const cleanPrompt = htmlToRichText(questionPromptHtml).replace(/^\s*Câu\s*\d+[:.\-\s]\s*/i, '').trim();
 
     const subItemsBody = aStart === -1 ? block : block.substring(aStart);
     const subKeys: ('a' | 'b' | 'c' | 'd')[] = ['a', 'b', 'c', 'd'];
     const subItems: SubQuestionItem[] = [];
+    let anyMark = false;
 
     for (let s = 0; s < subKeys.length; s++) {
       const curKey = subKeys[s];
@@ -557,6 +693,8 @@ export function parseCircular7991Html(
 
         const rawText = htmlToRichText(itemSnippet);
         const hasExplicitDung = /\(Đúng\)|\(Đ\)/i.test(rawText);
+        const hasExplicitSai = /\(Sai\)|\(S\)/i.test(rawText);
+        if (isUnderlined || hasExplicitDung || hasExplicitSai) anyMark = true;
         const isCorrect = isUnderlined || hasExplicitDung;
 
         const cleanItemContent = rawText
@@ -583,6 +721,26 @@ export function parseCircular7991Html(
       });
     }
 
+    // EduMix port: the teacher's trailing Phần II key table ("Câu 1:
+    // Đ - S - Đ - S") OVERRIDES in-body marks for this question.
+    const p2Warnings: string[] = [];
+    const stemNumMatch2 = htmlToRichText(block).match(/Câu\s*(\d+)\s*[:.]/i);
+    const stemNum2 = stemNumMatch2 ? parseInt(stemNumMatch2[1], 10) : -1;
+    const keyBools =
+      part2KeyAnswers.get(part2Count + 1) ??
+      (stemNum2 !== -1 ? part2KeyAnswers.get(stemNum2) : undefined);
+    let keyApplied = false;
+    if (keyBools && subItems.length === 4) {
+      subItems.forEach((si, i) => {
+        si.isCorrect = keyBools[i];
+      });
+      keyApplied = true;
+    } else if (!anyMark) {
+      p2Warnings.push(
+        'Chưa nhận diện được ý Đúng/Sai từ định dạng trong file (không thấy gạch chân, tô đỏ, (Đ)/(S) hay bảng đáp án) — các ý đang để mặc định, Thầy vui lòng kiểm tra lại.'
+      );
+    }
+
     const question2: Question = {
       id: `q-p2-${globalOrder}-${Date.now()}`,
       order: globalOrder++,
@@ -591,12 +749,12 @@ export function parseCircular7991Html(
       subItems,
       options: [],
       correctAnswer: subItems.map(si => `${si.key}:${si.isCorrect ? 'Đ' : 'S'}`).join(' '),
-      explanation: 'Nhận diện theo ký tự gạch chân: Ý có ký tự gạch chân là ĐÚNG, ý không gạch chân là SAI.',
+      explanation: keyApplied
+        ? 'Đáp án Đúng/Sai lấy từ bảng đáp án ở cuối file Word.'
+        : 'Nhận diện theo định dạng đánh dấu: Ý có gạch chân/tô đỏ là ĐÚNG, ý không có là SAI.',
       points: 1.0
     };
-    if (subItems.length === 0) {
-      question2.parseWarnings = ['Không tách được các ý a)–d) trong file Word.'];
-    }
+    if (p2Warnings.length > 0) question2.parseWarnings = p2Warnings;
     finalizeRich(question2);
     allQuestions.push(question2);
 
@@ -612,8 +770,16 @@ export function parseCircular7991Html(
     const questionNum = numMatch ? parseInt(numMatch[1], 10) : -1;
 
     let cleanContent = rawText
-      .replace(/^.*?Câu\s*\d+[:.\-\s]\s*/i, '')
+      .replace(/^\s*Câu\s*\d+[:.\-\s]\s*/i, '')
       .replace(/(?:Đáp\s*án|ĐS|Key|A)[\.\:\)]\s*\d{1,4}.*$/i, '')
+      .trim();
+    // Inline answer lines ("Đáp số: 117") belong to the key, not the stem:
+    // drop whole-line occurrences and a trailing same-line occurrence.
+    cleanContent = cleanContent
+      .replace(/\s*(?:Đáp\s*(?:số|án)\s*[:.]|(?:ĐS|Kết\s*quả)\s*[:=])\s*-?\d+(?:[.,]\d+)?%?\s*$/i, '')
+      .split('\n')
+      .filter((line) => !/^\s*(?:Đáp\s*(?:số|án)\s*[:.]|(?:ĐS|Kết\s*quả)\s*[:=])/i.test(line))
+      .join('\n')
       .trim();
     // Defence in depth: drop a trailing standalone end-of-exam line ("— HẾT —")
     // if one ever survives into the block.
@@ -623,13 +789,36 @@ export function parseCircular7991Html(
       .join('\n')
       .trim();
 
-    // Preferred source: the answer-key section of the same file (verbatim).
+    // EduMix chain for Phần III answers, in priority order:
+    //   1. an inline keyword right in the question ("Đáp số: -0,4",
+    //      "Đáp án: 46", "ĐS: 8", "Kết quả: 12") — kept verbatim;
+    //   2. a standalone number the teacher underlined (EduMix's
+    //      UNDERLINE_RED slot — colour is flattened by mammoth, underline
+    //      is what survives to this layer; colour-only numbers are caught
+    //      earlier by the DOM marking pass);
+    //   3. the answer-key section of the same file;
+    //   4. legacy in-body patterns; 5. the loud '1234' sentinel + warning.
+    // The Part III number-rule check downstream warns (never blocks).
+    const inlineMatch = rawText.match(
+      /(?:Đáp\s*(?:số|án)\s*[:.]|(?:ĐS|Kết\s*quả)\s*[:=])\s*(-?\d+(?:[.,]\d+)?%?)/i
+    );
+    const inlineAnswer = inlineMatch ? inlineMatch[1] : undefined;
+
+    const underlinedNumMatch = block.match(/<u[^>]*>\s*(-?\d+(?:[.,]\d+)?)\s*<\/u>/i);
+    const underlinedAnswer = underlinedNumMatch ? underlinedNumMatch[1] : undefined;
+
     const keyAnswer = questionNum !== -1 ? part3KeyAnswers.get(questionNum) : undefined;
 
     let shortAnswer = '1234'; // Fallback marker when no answer exists in the file
     let explanation = '';
     let answerMissing = false;
-    if (keyAnswer) {
+    if (inlineAnswer) {
+      shortAnswer = inlineAnswer;
+      explanation = `Đáp án ghi ngay sau câu trong file Word (Đáp số): ${shortAnswer}.`;
+    } else if (underlinedAnswer) {
+      shortAnswer = underlinedAnswer;
+      explanation = `Đáp án là con số được gạch chân trong file Word: ${shortAnswer}.`;
+    } else if (keyAnswer) {
       shortAnswer = keyAnswer;
       explanation = `Đáp án trích từ phần ĐÁP ÁN của file Word: ${shortAnswer}.`;
     } else {
@@ -675,18 +864,163 @@ export function parseCircular7991Html(
   // as a question block (doing so shifts every detected answer by one).
   const isQuestionBlock = (b: string) => /^(?:<[^>]+>|\s)*Câu\s*\d+\s*[.:]/i.test(b);
 
+  // --- Structure-anchored fallback splitting (Phase D) ---------------------
+  // Many real teacher files have NO "Câu N" numbers at all: stems flow
+  // continuously and a question is delimited by its option block (Phần I),
+  // its a)–d) ý group (Phần II), or its inline "Đáp số:" line (Phần III).
+  // These splitters only run when the Câu-anchored split found nothing, so
+  // canonical files are completely unaffected.
+  // Split on <p> AND <li> boundaries: teachers who type questions as Word
+  // numbered lists get <ol><li> from mammoth — without <li> chunks, a list
+  // stem glues onto the preceding part-heading chunk and is dropped with
+  // it, silently losing the stem and its formulas (asset-census finding).
+  const splitParagraphChunks = (html: string): string[] =>
+    html.split(/(?=<p[\s>])|(?=<li[\s>])/i).map((s) => s.trim()).filter((s) => s.length > 0);
+  const chunkText = (c: string): string =>
+    htmlToRichText(c).replace(/\s+/g, ' ').trim();
+  const isDroppableLeadChunk = (t: string): boolean =>
+    PART1_HEADING.test(t) ||
+    PART2_HEADING.test(t) ||
+    PART3_HEADING.test(t) ||
+    /Thí sinh trả lời/i.test(t) ||
+    /chỉ chọn một phương án/i.test(t) ||
+    /^(SỞ\s|TRƯỜNG\s|ĐỀ THI|ĐỀ KIỂM TRA|MÔN[:\s]|THỜI GIAN|HỌ VÀ TÊN|MÃ ĐỀ)/i.test(t);
+
+  const textMarkerPos = (text: string, key: string, from: number): number => {
+    const re = new RegExp(`(?:^|[\\s\\t\\.:;])${key}[\\.\\)](?![\\p{L}0-9])`, 'gu');
+    re.lastIndex = from;
+    const m = re.exec(text);
+    return m ? m.index + m[0].indexOf(key) : -1;
+  };
+  const hasFullOptionChain = (text: string): boolean => {
+    let pos = 0;
+    for (const k of ['A', 'B', 'C', 'D']) {
+      const p = textMarkerPos(text, k, pos);
+      if (p === -1) return false;
+      pos = p + 1;
+    }
+    return true;
+  };
+  const hasAnyOptionMarker = (text: string): boolean =>
+    ['A', 'B', 'C', 'D'].some((k) => textMarkerPos(text, k, 0) !== -1);
+
+  const fallbackSplitPart1 = (sectionHtml: string): string[] => {
+    const blocks: string[] = [];
+    let cur: string[] = [];
+    for (const chunk of splitParagraphChunks(sectionHtml)) {
+      const t = chunkText(chunk);
+      if (!t) continue;
+      if (cur.length === 0 && isDroppableLeadChunk(t)) continue;
+      cur.push(chunk);
+      if (hasFullOptionChain(chunkText(cur.join('\n')))) {
+        blocks.push(cur.join('\n'));
+        cur = [];
+      }
+    }
+    if (cur.length) {
+      const t = chunkText(cur.join('\n'));
+      if (blocks.length === 0) blocks.push(cur.join('\n'));
+      else if (hasAnyOptionMarker(t)) blocks[blocks.length - 1] += '\n' + cur.join('\n');
+      // else: trailing instructions — never glue them onto the last option.
+    }
+    return blocks;
+  };
+
+  const fallbackSplitPart2 = (sectionHtml: string): string[] => {
+    const startsSub = (t: string, k: string): boolean =>
+      new RegExp(`^${k}[\\)\\.]`).test(t);
+    const blocks: string[] = [];
+    let cur: string[] = [];
+    for (const chunk of splitParagraphChunks(sectionHtml)) {
+      const t = chunkText(chunk);
+      if (!t) continue;
+      if (cur.length === 0 && isDroppableLeadChunk(t)) continue;
+      cur.push(chunk);
+      const hasA = cur.some((c) => startsSub(chunkText(c), 'a'));
+      if (hasA && (startsSub(t, 'd') || /(?:^|\s)d\)/.test(t))) {
+        blocks.push(cur.join('\n'));
+        cur = [];
+      }
+    }
+    if (cur.length) {
+      if (blocks.length) blocks[blocks.length - 1] += '\n' + cur.join('\n');
+      else blocks.push(cur.join('\n'));
+    }
+    return blocks;
+  };
+
+  const fallbackSplitPart3 = (sectionHtml: string): string[] => {
+    const blocks: string[] = [];
+    let cur: string[] = [];
+    for (const chunk of splitParagraphChunks(sectionHtml)) {
+      const t = chunkText(chunk);
+      if (!t) continue;
+      if (cur.length === 0 && isDroppableLeadChunk(t)) continue;
+      cur.push(chunk);
+      if (/Đáp\s*(?:số|án)\s*[:.]/i.test(t)) {
+        blocks.push(cur.join('\n'));
+        cur = [];
+      }
+    }
+    if (cur.length) blocks.push(cur.join('\n'));
+    return blocks;
+  };
+
+  // Whole-body scan for files with neither part headings nor "Câu N".
+  const fallbackSplitWholeBody = (): void => {
+    let cur: string[] = [];
+    const flush = (kind: 'p1' | 'p2' | 'p3') => {
+      if (!cur.length) return;
+      const block = cur.join('\n');
+      cur = [];
+      if (kind === 'p1') parseAsPart1(block);
+      else if (kind === 'p2') parseAsPart2(block);
+      else parseAsPart3(block);
+    };
+    for (const chunk of splitParagraphChunks(bodyHtml)) {
+      const t = chunkText(chunk);
+      if (!t) continue;
+      if (cur.length === 0 && isDroppableLeadChunk(t)) continue;
+      cur.push(chunk);
+      const blockText = chunkText(cur.join('\n'));
+      if (hasFullOptionChain(blockText)) {
+        flush('p1');
+      } else if (/Đáp\s*(?:số|án)\s*[:.]/i.test(t)) {
+        flush('p3');
+      } else if (
+        /(?:^|\s)d\)/.test(t) &&
+        cur.some((c) => /^a[\.\)]/.test(chunkText(c)))
+      ) {
+        flush('p2');
+      }
+    }
+    if (cur.length) {
+      const blockText = chunkText(cur.join('\n'));
+      if (cur.some((c) => /^a[\.\)]/.test(chunkText(c))) && !hasFullOptionChain(blockText)) {
+        flush('p2');
+      } else if (hasFullOptionChain(blockText) || hasAnyOptionMarker(blockText)) {
+        flush('p1');
+      } else {
+        flush('p3');
+      }
+    }
+  };
+
   // EXECUTION PATH A: Explicit Section Headers Present
   if (hasExplicitParts) {
     if (section1Html) {
-      const qBlocks = section1Html.split(questionSplitter).filter(isQuestionBlock);
+      let qBlocks = section1Html.split(questionSplitter).filter(isQuestionBlock);
+      if (qBlocks.length === 0) qBlocks = fallbackSplitPart1(section1Html);
       qBlocks.forEach(b => parseAsPart1(b));
     }
     if (section2Html) {
-      const qBlocks = section2Html.split(questionSplitter).filter(isQuestionBlock);
+      let qBlocks = section2Html.split(questionSplitter).filter(isQuestionBlock);
+      if (qBlocks.length === 0) qBlocks = fallbackSplitPart2(section2Html);
       qBlocks.forEach(b => parseAsPart2(b));
     }
     if (section3Html) {
-      const qBlocks = section3Html.split(questionSplitter).filter(isQuestionBlock);
+      let qBlocks = section3Html.split(questionSplitter).filter(isQuestionBlock);
+      if (qBlocks.length === 0) qBlocks = fallbackSplitPart3(section3Html);
       qBlocks.forEach(b => parseAsPart3(b));
     }
   } else {
@@ -694,7 +1028,10 @@ export function parseCircular7991Html(
     // Automatically classify each question based on its internal structure!
     const allBlocks = bodyHtml.split(questionSplitter).filter(isQuestionBlock);
 
-    allBlocks.forEach((b) => {
+    if (allBlocks.length === 0) {
+      // No "Câu N" anchors anywhere — split by structure instead.
+      fallbackSplitWholeBody();
+    } else allBlocks.forEach((b) => {
       // Check if block has True/False format: contains a), b), c) or a., b., c.
       const hasSubItems = /(?:<[^>]+>|\s)*(?:<u>)?\s*[a-d][\.\:\)]\s+/i.test(b);
       // Check if block has Part III format: contains short answer 4 digits or A.1234
@@ -874,7 +1211,10 @@ export function parseCircular7991Html(
     part2PointPerQuestion: part2Weight,
     part3PointPerQuestion: part3Weight,
     part3Violations,
-    importWarnings
+    importWarnings,
+    answerSignalStats: extras?.answerSignalStats ?? null,
+    mathtypeTexCount: extras?.mathtypeTexCount ?? 0,
+    wmfConvertedCount: extras?.wmfConvertedCount ?? 0
   };
 }
 
@@ -899,6 +1239,9 @@ export async function parseDocxFile(file: File): Promise<ParsedExamResult> {
         mathSegments: pre.mathSegments,
         imageDataUris: pre.imageDataUris,
         warnings: pre.warnings,
+        answerSignalStats: pre.answerSignalStats,
+        mathtypeTexCount: pre.mathtypeTexCount,
+        wmfConvertedCount: pre.wmfConvertedCount,
       };
     }
   } catch (err) {
