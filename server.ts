@@ -120,6 +120,15 @@ function saveCloudData(data: any, syncKey?: string) {
   }
 }
 
+// Disable caching for all API responses to ensure Zalo Webview & mobile browsers always get live data
+app.use('/api', (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+  next();
+});
+
 // API Routes
 app.get('/api/health', (req, res) => {
   res.json({

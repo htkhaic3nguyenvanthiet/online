@@ -176,7 +176,14 @@ export const cloudStorageService = {
     found: boolean;
   }> {
     try {
-      const res = await fetch(`/api/exam/${encodeURIComponent(examId)}`);
+      const cacheBuster = `_t=${Date.now()}`;
+      const res = await fetch(`/api/exam/${encodeURIComponent(examId)}?${cacheBuster}`, {
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      });
       if (res.ok) {
         const json = await res.json();
         if (json.success && json.found) {
@@ -188,8 +195,8 @@ export const cloudStorageService = {
           };
         }
       }
-    } catch {
-      // fallback
+    } catch (err) {
+      console.warn('Fetch exam from server error:', err);
     }
 
     return { found: false };

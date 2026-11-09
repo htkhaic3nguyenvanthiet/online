@@ -44,6 +44,9 @@ export default function App() {
   const [isDirectStudentMode, setIsDirectStudentMode] = useState<boolean>(() => {
     return typeof window !== 'undefined' && getExamIdFromUrl() !== null;
   });
+  const [isExamLoading, setIsExamLoading] = useState<boolean>(() => {
+    return typeof window !== 'undefined' && getExamIdFromUrl() !== null;
+  });
 
   const [currentSyncKey, setCurrentSyncKey] = useState<string>(() => cloudStorageService.getSyncKey());
   const [autoBackupEnabled, setAutoBackupEnabled] = useState<boolean>(() => cloudStorageService.isAutoBackupEnabled());
@@ -80,104 +83,95 @@ export default function App() {
       const examParam = getExamIdFromUrl();
       if (examParam) {
         setIsDirectStudentMode(true);
+        setIsExamLoading(true);
         setAppMode('student');
 
-        // Immediate initial setup from local state if available
-        const localSess = sessions.find((s) => s.id === examParam || s.quizId === examParam);
-        const localQuiz = quizzes.find(
-          (q) =>
-            q.id === examParam ||
-            q.title.toLowerCase() === examParam.toLowerCase() ||
-            examParam.startsWith(q.id.slice(0, 6))
-        );
-
-        if (localSess) {
-          setActiveStudentExamSession(localSess);
-          setActiveStudentExamTitle(localSess.title);
-        } else if (localQuiz) {
-          setActiveStudentExamTitle(localQuiz.title);
-          setActiveStudentExamSession({
-            id: 'sess-' + localQuiz.id,
-            title: localQuiz.title,
-            quizId: localQuiz.id,
-            className: 'Khối 12',
-            startTime: 'Vừa tạo',
-            endTime: 'Sau 30 ngày',
-            status: 'active',
-            shareUrl: getStudentExamShareUrl(localQuiz.id),
-            allowedAttempts: 5,
-            durationMinutes: localQuiz.durationMinutes || 50,
-            totalSubmissions: 0,
-            maxSlots: 500,
-            isArenaMode: localQuiz.isInteractive,
-            questions: localQuiz.questions
-          });
-        }
-
         // ALWAYS fetch live exam & questions from server to ensure 100% updated teacher questions!
-        cloudStorageService.fetchExamFromServer(examParam).then((res) => {
-          if (res.found) {
-            const fetchedQuestions = (res.questions && res.questions.length > 0)
-              ? res.questions
-              : (res.session?.questions || res.quiz?.questions);
+        cloudStorageService
+          .fetchExamFromServer(examParam)
+          .then((res) => {
+            if (res.found) {
+              const fetchedQuestions =
+                res.questions && res.questions.length > 0
+                  ? res.questions
+                  : res.session?.questions || res.quiz?.questions;
 
-            if (res.session) {
-              const updatedSess: ExamSession = {
-                ...res.session,
-                questions: fetchedQuestions || res.session.questions
-              };
-              setActiveStudentExamSession(updatedSess);
-              setActiveStudentExamTitle(updatedSess.title);
-              setSessions((prev) => {
-                const idx = prev.findIndex((s) => s.id === updatedSess.id);
-                if (idx >= 0) {
-                  const copy = [...prev];
-                  copy[idx] = updatedSess;
-                  return copy;
-                }
-                return [updatedSess, ...prev];
-              });
-            } else if (res.quiz) {
-              const updatedSess: ExamSession = {
-                id: 'sess-' + res.quiz.id,
-                title: res.quiz.title,
-                quizId: res.quiz.id,
-                className: 'Khối 12',
-                startTime: 'Vừa tạo',
-                endTime: 'Sau 30 ngày',
-                status: 'active',
-                shareUrl: getStudentExamShareUrl(res.quiz.id),
-                allowedAttempts: 5,
-                durationMinutes: res.quiz.durationMinutes || 50,
-                totalSubmissions: 0,
-                maxSlots: 500,
-                isArenaMode: res.quiz.isInteractive,
-                questions: fetchedQuestions || res.quiz.questions
-              };
-              setActiveStudentExamSession(updatedSess);
-              setActiveStudentExamTitle(res.quiz.title);
-            }
+              if (res.session) {
+                const updatedSess: ExamSession = {
+                  ...res.session,
+                  questions: fetchedQuestions || res.session.questions,
+                };
+                setActiveStudentExamSession(updatedSess);
+                setActiveStudentExamTitle(updatedSess.title);
+                setSessions((prev) => [updatedSess, ...prev.filter((s) => s.id !== updatedSess.id)]);
+              } else if (res.quiz) {
+                const updatedSess: ExamSession = {
+                  id: 'sess-' + res.quiz.id,
+                  title: res.quiz.title,
+                  quizId: res.quiz.id,
+                  className: 'Khối 12',
+                  startTime: 'Vừa tạo',
+                  endTime: 'Sau 30 ngày',
+                  status: 'active',
+                  shareUrl: getStudentExamShareUrl(res.quiz.id),
+                  allowedAttempts: 5,
+                  durationMinutes: res.quiz.durationMinutes || 50,
+                  totalSubmissions: 0,
+                  maxSlots: 500,
+                  isArenaMode: res.quiz.isInteractive,
+                  questions: fetchedQuestions || res.quiz.questions,
+                };
+                setActiveStudentExamSession(updatedSess);
+                setActiveStudentExamTitle(res.quiz.title);
+              }
 
-            if (res.quiz && fetchedQuestions && fetchedQuestions.length > 0) {
-              setQuizzes((prev) => {
-                const idx = prev.findIndex((q) => q.id === res.quiz?.id);
-                if (idx >= 0) {
-                  const copy = [...prev];
-                  copy[idx] = { ...res.quiz!, questions: fetchedQuestions };
-                  return copy;
-                }
-                return [{ ...res.quiz!, questions: fetchedQuestions }, ...prev];
-              });
+              if (res.quiz && fetchedQuestions && fetchedQuestions.length > 0) {
+                setQuizzes((prev) => [{ ...res.quiz!, questions: fetchedQuestions }, ...prev.filter((q) => q.id !== res.quiz?.id)]);
+              }
+            } else {
+              // Fallback to local state if server has not synced yet
+              const localSess = sessions.find((s) => s.id === examParam || s.quizId === examParam);
+              const localQuiz = quizzes.find(
+                (q) =>
+                  q.id === examParam ||
+                  q.title.toLowerCase() === examParam.toLowerCase() ||
+                  examParam.startsWith(q.id.slice(0, 6))
+              );
+
+              if (localSess) {
+                setActiveStudentExamSession(localSess);
+                setActiveStudentExamTitle(localSess.title);
+              } else if (localQuiz) {
+                setActiveStudentExamTitle(localQuiz.title);
+                setActiveStudentExamSession({
+                  id: 'sess-' + localQuiz.id,
+                  title: localQuiz.title,
+                  quizId: localQuiz.id,
+                  className: 'Khối 12',
+                  startTime: 'Vừa tạo',
+                  endTime: 'Sau 30 ngày',
+                  status: 'active',
+                  shareUrl: getStudentExamShareUrl(localQuiz.id),
+                  allowedAttempts: 5,
+                  durationMinutes: localQuiz.durationMinutes || 50,
+                  totalSubmissions: 0,
+                  maxSlots: 500,
+                  isArenaMode: localQuiz.isInteractive,
+                  questions: localQuiz.questions,
+                });
+              }
             }
-          }
-        });
+          })
+          .finally(() => {
+            setIsExamLoading(false);
+          });
       }
     };
 
     handleUrlRouting();
     window.addEventListener('popstate', handleUrlRouting);
     return () => window.removeEventListener('popstate', handleUrlRouting);
-  }, [sessions, quizzes]);
+  }, []);
 
   // Load persistent cloud state on mount using teacher's Sync Key
   useEffect(() => {
@@ -367,6 +361,26 @@ export default function App() {
   // ISOLATED DIRECT STUDENT MODE (When student accesses via shared link)
   // Absolutely no TopNavbar, no Sidebar, no teacher administration controls
   if (isDirectStudentMode) {
+    if (isExamLoading) {
+      return (
+        <div className="min-h-screen bg-[#04181b] bg-gradient-to-b from-[#062024] via-[#082a30] to-[#04171a] flex flex-col items-center justify-center font-sans text-slate-100 p-6">
+          <div className="bg-[#0b383f]/95 border-2 border-teal-400/50 rounded-3xl p-8 max-w-md w-full text-center shadow-2xl space-y-5 backdrop-blur-md">
+            <div className="w-16 h-16 mx-auto rounded-full bg-teal-500/20 border-2 border-teal-400 flex items-center justify-center text-teal-300 animate-spin">
+              <Sparkles className="w-8 h-8" />
+            </div>
+            <div>
+              <h2 className="text-xl font-black text-white tracking-tight">Hệ Thống Khảo Thí Trực Tuyến</h2>
+              <p className="text-xs text-teal-200/90 mt-1 font-medium">Đang kết nối máy chủ & đồng bộ bộ đề thi của Giáo viên...</p>
+            </div>
+            <div className="w-full bg-teal-950/80 rounded-full h-2 overflow-hidden border border-teal-500/30">
+              <div className="bg-gradient-to-r from-teal-400 via-emerald-400 to-teal-300 h-full w-3/4 animate-pulse"></div>
+            </div>
+            <span className="text-[11px] text-teal-300/70 font-mono block">Zero-Cache • Realtime Server Sync</span>
+          </div>
+        </div>
+      );
+    }
+
     const questionsToServe = getExamQuestions(activeStudentExamSession, activeStudentExamTitle);
 
     return (
