@@ -651,7 +651,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
         options: fallbackOptions,
         selectedAnswer: typeof chosen === 'object' ? JSON.stringify(chosen) : (chosen || undefined),
         correctAnswer: (q.correctAnswer || q.shortAnswerCorrect || 'A').toString(),
-        subject: 'Công nghệ 12 - THPT Mang Thít'
+        subject: 'Công nghệ 12'
       });
       setAiExplanationText(explanation);
       soundEffects.playCorrect();
@@ -714,7 +714,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
               {resolvedTitle}
             </h1>
             <p className="text-teal-200/80 text-xs sm:text-sm font-medium">
-              Giáo viên giao đề: <span className="font-bold text-teal-300">Thầy Hồ Tấn Khải</span>
+              Hệ thống khảo thí & đánh giá năng lực học tập trực tuyến
             </p>
           </div>
 
@@ -786,7 +786,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                 <span className="font-bold text-rose-300">Không được đổi tab màn hình / thu nhỏ cửa sổ:</span> Hệ thống tự động phát hiện và cảnh báo. Vi phạm quá <span className="font-black text-amber-300">{resolvedMaxTabSwitches} lần</span> bài thi sẽ tự động bị đình chỉ và thu hồi ngay!
               </li>
               <li>
-                <span className="font-bold text-emerald-300">Tự động trả điểm về máy chủ:</span> Khi bấm Nộp bài hoặc hết giờ, kết quả điểm số sẽ được gửi tức thì về Bảng Giám Sát của Thầy Hồ Tấn Khải.
+                <span className="font-bold text-emerald-300">Tự động trả điểm về máy chủ:</span> Khi bấm Nộp bài hoặc hết giờ, kết quả điểm số sẽ được gửi tức thì về Bảng Giám Sát của Giáo viên.
               </li>
             </ul>
           </div>
@@ -824,7 +824,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
           {/* Start CTA Button */}
           {hasExceededAttempts ? (
             <div className="p-3.5 bg-rose-900/80 border border-rose-500 rounded-2xl text-rose-100 text-xs font-bold text-center">
-              ⛔ Bạn đã hoàn thành tối đa {resolvedAllowedAttempts} lượt thi của đề này. Vui lòng liên hệ Thầy Hồ Tấn Khải để được cấp thêm quyền thi!
+              ⛔ Bạn đã hoàn thành tối đa {resolvedAllowedAttempts} lượt thi của đề này. Vui lòng liên hệ Giáo viên để được cấp thêm quyền thi!
             </div>
           ) : (
             <button
@@ -1679,7 +1679,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
               <span>Đã tự động gửi kết quả về máy chủ Bảng Giám Sát Giáo Viên!</span>
             </div>
             <p className="text-[11px] text-emerald-300/80 leading-relaxed">
-              Điểm số và phân tích bài làm của {studentName} đã được cập nhật trực tiếp lên hệ thống quản lý của Thầy Hồ Tấn Khải qua mạng thời gian thực (Zero drop).
+              Điểm số và phân tích bài làm của {studentName} đã được cập nhật trực tiếp lên hệ thống quản lý của Giáo viên qua mạng thời gian thực (Zero drop).
             </p>
           </div>
 
@@ -1733,7 +1733,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
               <button
                 onClick={() => {
                   soundEffects.playClick();
-                  alert('Điểm số và bài làm của bạn đã được ghi nhận vào hệ thống Bảng Giám Sát của Thầy Hồ Tấn Khải. Bạn có thể đóng tab trình duyệt này!');
+                  alert('Điểm số và bài làm của bạn đã được ghi nhận vào hệ thống Bảng Giám Sát của Giáo viên. Bạn có thể đóng tab trình duyệt này!');
                 }}
                 className="btn-3d btn-3d-emerald px-5 py-3 text-xs rounded-xl font-bold cursor-pointer text-white shadow-md flex items-center gap-1.5"
               >

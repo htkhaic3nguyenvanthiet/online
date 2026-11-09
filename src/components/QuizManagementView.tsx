@@ -96,8 +96,7 @@ export const QuizManagementView: React.FC<QuizManagementViewProps> = ({
 
   const handleDownloadQuizFile = (quiz: Quiz) => {
     soundEffects.playClick();
-    const content = `TRƯỜNG THPT MANG THÍT - ĐỀ THI TRẮC NGHIỆM
-Tác giả: Hồ Tấn Khải
+    const content = `BÀI THI TRẮC NGHIỆM TRỰC TUYẾN
 Tên đề: ${quiz.title}
 Môn học: ${quiz.subject} (${quiz.grade})
 Thời gian làm bài: ${quiz.durationMinutes} phút
@@ -107,7 +106,7 @@ ${quiz.questions?.map((q, idx) => `
 Câu ${idx + 1}: ${q.content}
 ${q.options ? q.options.map(o => `  ${o.key}. ${o.text}`).join('\n') : q.subItems ? q.subItems.map(si => `  ${si.key}) ${si.content} [${si.isCorrect ? 'ĐÚNG' : 'SAI'}]`).join('\n') : `  Đáp án 4 ký tự: ${q.shortAnswerCorrect || '1234'}`}
 => Đáp án chuẩn: ${q.correctAnswer || q.shortAnswerCorrect || 'A'}
-=> Hướng dẫn giải: ${q.explanation || 'Theo Thông tư 7991 BGD&ĐT.'}
+=> Hướng dẫn giải: ${q.explanation || 'Theo chuẩn GDPT Bộ Giáo dục & Đào tạo.'}
 `).join('\n----------------------------------------\n') || 'Nội dung câu hỏi đang được biên tập.'}
 `;
 
@@ -115,7 +114,7 @@ ${q.options ? q.options.map(o => `  ${o.key}. ${o.text}`).join('\n') : q.subItem
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${quiz.fileName.replace('.docx', '')}_THPT_MangThit.txt`;
+    a.download = `${quiz.fileName.replace('.docx', '')}_DeThi.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

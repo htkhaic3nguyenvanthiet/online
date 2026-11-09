@@ -175,44 +175,90 @@ app.get('/api/exam/:id', (req, res) => {
   if (!examId) return res.status(400).json({ success: false, error: 'Thiếu mã đề/phiên thi' });
 
   const syncKey = (req.query.syncKey as string) || (req.query.key as string);
-  const data = getCloudData(syncKey);
-  if (!data) {
-    return res.json({ success: false, error: 'Chưa có dữ liệu đề thi trên máy chủ', questions: [] });
+
+  // Gather all available cloud stores to ensure 100% chance of finding newest questions
+  const storesToInspect: any[] = [];
+
+  // 1. Specific sync key store if requested
+  if (syncKey) {
+    const specificData = getCloudData(syncKey);
+    if (specificData) storesToInspect.push(specificData);
   }
 
-  // Look for matching session
-  const session = data.sessions?.find(
-    (s: any) =>
-      s.id === examId ||
-      s.quizId === examId ||
-      (s.shareUrl && s.shareUrl.includes(examId))
-  );
+  // 2. Default active CLOUD_STORE_FILE (most recently saved by teacher)
+  if (fs.existsSync(CLOUD_STORE_FILE)) {
+    try {
+      storesToInspect.push(JSON.parse(fs.readFileSync(CLOUD_STORE_FILE, 'utf-8')));
+    } catch {}
+  }
 
-  // Look for matching quiz
-  const quiz = data.quizzes?.find(
-    (q: any) =>
-      q.id === examId ||
-      (session && q.id === session.quizId) ||
-      q.id?.slice(0, 6) === examId ||
-      q.title?.toLowerCase() === examId.toLowerCase() ||
-      examId.startsWith(q.id?.slice(0, 6))
-  );
+  // 3. Inspect all files in SYNC_KEYS_DIR sorted newest first
+  if (fs.existsSync(SYNC_KEYS_DIR)) {
+    try {
+      const files = fs.readdirSync(SYNC_KEYS_DIR)
+        .filter((f) => f.endsWith('.json'))
+        .map((f) => {
+          const fp = path.join(SYNC_KEYS_DIR, f);
+          return { fp, mtime: fs.statSync(fp).mtimeMs };
+        })
+        .sort((a, b) => b.mtime - a.mtime);
 
-  // Prioritize session.questions if attached, otherwise quiz.questions
-  const questions =
-    (session?.questions && session.questions.length > 0)
-      ? session.questions
-      : (quiz?.questions && quiz.questions.length > 0)
-      ? quiz.questions
-      : [];
+      for (const item of files) {
+        try {
+          storesToInspect.push(JSON.parse(fs.readFileSync(item.fp, 'utf-8')));
+        } catch {}
+      }
+    } catch {}
+  }
+
+  // Search for the session or quiz
+  for (const data of storesToInspect) {
+    if (!data) continue;
+
+    // Look for matching session
+    const session = data.sessions?.find(
+      (s: any) =>
+        s.id === examId ||
+        s.quizId === examId ||
+        (s.shareUrl && s.shareUrl.includes(examId))
+    );
+
+    // Look for matching quiz
+    const quiz = data.quizzes?.find(
+      (q: any) =>
+        q.id === examId ||
+        (session && q.id === session.quizId) ||
+        q.id?.slice(0, 6) === examId ||
+        q.title?.toLowerCase() === examId.toLowerCase() ||
+        examId.startsWith(q.id?.slice(0, 6))
+    );
+
+    // Prioritize session.questions if attached, otherwise quiz.questions
+    const questions =
+      (session?.questions && session.questions.length > 0)
+        ? session.questions
+        : (quiz?.questions && quiz.questions.length > 0)
+        ? quiz.questions
+        : [];
+
+    if ((session || quiz) && questions.length > 0) {
+      return res.json({
+        success: true,
+        examId,
+        session,
+        quiz,
+        questions,
+        found: true
+      });
+    }
+  }
 
   return res.json({
-    success: true,
+    success: false,
     examId,
-    session,
-    quiz,
-    questions,
-    found: Boolean((session || quiz) && questions.length > 0)
+    error: 'Không tìm thấy bộ đề thi trên máy chủ',
+    questions: [],
+    found: false
   });
 });
 

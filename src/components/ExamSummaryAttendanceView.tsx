@@ -291,9 +291,7 @@ export const ExamSummaryAttendanceView: React.FC<ExamSummaryAttendanceViewProps>
     const shareLink = getStudentExamShareUrl(currentSession?.id || '');
     const names = unsubmittedStudentsList.map((s, idx) => `${idx + 1}. ${s.studentName} (${s.className || 'Khối 12'})`).join('\n');
     
-    const message = `📢 THÔNG BÁO ĐÔN ĐỐC LÀM BÀI KIỂM TRA TRỰC TUYẾN
-Trường: THPT Mang Thít
-Giáo viên giao đề: Thầy Hồ Tấn Khải
+    const message = `📌 BÀI KIỂM TRA TRỰC TUYẾN - THÔNG BÁO ĐÔN ĐỐC LÀM BÀI
 Bài thi: ${currentSession?.title || 'Bài kiểm tra'}
 Thời hạn nộp: ${currentSession?.endTime || 'Hôm nay'}
 

@@ -72,7 +72,7 @@ export const aiService = {
       }
       throw new Error(json.error || 'Không nhận được lời giải');
     } catch (err: any) {
-      return `💡 **Gợi ý & Hướng dẫn sư phạm (Test Online - THPT Mang Thít):**
+      return `💡 **Gợi ý & Hướng dẫn sư phạm (Bài kiểm tra trực tuyến):**
 - **Đáp án chính xác là ${params.correctAnswer}**: Đây là kết luận khoa học dựa theo chuẩn SGK Bộ Giáo Dục và Đào Tạo.
 - **Phân tích cơ sở:** Các phương án còn lại chưa đầy đủ điều kiện kỹ thuật hoặc phạm trù áp dụng trong nông nghiệp công nghệ cao.
 - **Mẹo ghi nhớ:** Ghi nhớ từ khóa bản chất cốt lõi của bài học để phân biệt nhanh các phương án gây nhiễu trong đề thi tốt nghiệp THPT.`;

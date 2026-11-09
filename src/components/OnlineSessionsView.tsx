@@ -124,7 +124,7 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
     const durationMins = session.durationMinutes || 50;
     const realQCount = session.questionCount || (linkedQuiz?.questions && linkedQuiz.questions.length > 0 ? linkedQuiz.questions.length : linkedQuiz?.questionCount) || 28;
     const shareLink = getStudentExamShareUrl(session.id);
-    return `📌 BÀI KIỂM TRA TRỰC TUYẾN - THPT MANG THÍT\n📘 Môn học: ${subjectName}\n📝 Bài kiểm tra: ${session.title}\n⏱ Thời gian làm bài: ${durationMins} phút (${realQCount} câu hỏi)\n🏫 Đối tượng: ${session.className || 'Toàn bộ học sinh'}\n👉 Học sinh bấm vào liên kết bên dưới để vào thi ngay:\n${shareLink}`;
+    return `📌 BÀI KIỂM TRA TRỰC TUYẾN\n📘 Môn học: ${subjectName}\n📝 Bài kiểm tra: ${session.title}\n⏱ Thời gian làm bài: ${durationMins} phút (${realQCount} câu hỏi)\n🏫 Đối tượng: ${session.className || 'Toàn bộ học sinh'}\n👉 Học sinh bấm vào liên kết bên dưới để vào thi ngay:\n${shareLink}`;
   };
 
   const handleCopyLink = (session: ExamSession) => {
@@ -137,9 +137,11 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
 
   const exportSessionExcel = (session: ExamSession, sessionSubs: StudentSubmission[]) => {
     soundEffects.playClick();
+    const linkedQuiz = quizzes.find((q) => q.id === session.quizId || q.title === session.title);
+    const subjectName = linkedQuiz?.subject || 'Công nghệ 12';
     let csv = '\uFEFF'; // UTF-8 BOM for Microsoft Excel
-    csv += `BẢNG THỐNG KÊ KẾT QUẢ BÀI KIỂM TRA TRỰC TUYẾN - TRƯỜNG THPT MANG THÍT\n`;
-    csv += `Tên bài kiểm tra:,"${session.title}",Môn học:,"Công nghệ 12",Thời lượng:,"${session.durationMinutes} phút"\n`;
+    csv += `BẢNG THỐNG KÊ KẾT QUẢ BÀI KIỂM TRA TRỰC TUYẾN\n`;
+    csv += `Tên bài kiểm tra:,"${session.title}",Môn học:,"${subjectName}",Thời lượng:,"${session.durationMinutes} phút"\n`;
     csv += `Lớp đối tượng:,"${session.className || 'Khối 12'}",Mã phòng thi:,"${session.id}",Thời điểm xuất file:,"${new Date().toLocaleString('vi-VN')}"\n`;
     csv += `Tổng số học sinh nộp bài:,"${sessionSubs.length}"\n\n`;
     csv += `STT,Mã định danh,Họ và tên học sinh,Lớp học,Thời gian nộp bài,Số câu đúng,Điểm số (Thang 10),Xếp loại năng lực,Thời gian hoàn thành,Tình trạng\n`;
@@ -462,10 +464,11 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
                               setConfigModalSession(toConfig);
                               setConfigModalTab('scoring');
                             }}
-                            className="p-2 text-slate-600 hover:text-teal-700 hover:bg-teal-50 rounded-xl border border-slate-200 cursor-pointer transition-colors"
+                            className="btn-3d px-3.5 py-2.5 text-xs rounded-xl font-black flex items-center gap-1.5 cursor-pointer shadow-lg text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:from-blue-500 hover:to-violet-500 border border-blue-300/50 transform hover:scale-105 active:scale-95 transition-all"
                             title="Cài đặt điểm số Thông tư 22, thời gian thi & quy chế"
                           >
-                            <Settings className="w-4 h-4" />
+                            <Settings className="w-4 h-4 stroke-[2.5] text-amber-300 animate-[spin_8s_linear_infinite]" />
+                            <span>Cài đặt đề</span>
                           </button>
 
                           <button

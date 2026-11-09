@@ -297,6 +297,7 @@ export default function App() {
       maxSlots: 500,
       isArenaMode: quiz.isInteractive,
       questionCount: (quiz.questions && quiz.questions.length > 0) ? quiz.questions.length : quiz.questionCount,
+      questions: quiz.questions,
       scoringConfig: {
         totalPoints: 10,
         durationMinutes: quiz.durationMinutes || 50,
@@ -332,12 +333,16 @@ export default function App() {
 
   // Helper to ensure 100% of authored questions are retrieved without dropping any questions
   const getExamQuestions = (targetSession?: ExamSession | null, targetTitle?: string): Question[] => {
-    // 1. By session quizId
+    // 1. Direct Session Questions (Top Priority: Exactly what was authored & deployed for this session)
+    if (targetSession?.questions && targetSession.questions.length > 0) {
+      return targetSession.questions;
+    }
+    // 2. By session quizId
     if (targetSession?.quizId) {
       const q = quizzes.find((quiz) => quiz.id === targetSession.quizId);
       if (q?.questions && q.questions.length > 0) return q.questions;
     }
-    // 2. By title
+    // 3. By title
     const searchTitle = targetTitle || targetSession?.title;
     if (searchTitle) {
       const q = quizzes.find((quiz) =>
@@ -347,13 +352,13 @@ export default function App() {
       );
       if (q?.questions && q.questions.length > 0) return q.questions;
     }
-    // 3. By URL exam param
+    // 4. By URL exam param
     const urlId = getExamIdFromUrl();
     if (urlId) {
       const q = quizzes.find((quiz) => quiz.id === urlId || quiz.id.startsWith(urlId.slice(0, 6)));
       if (q?.questions && q.questions.length > 0) return q.questions;
     }
-    // 4. Fallback to first quiz with questions or sampleQuestions
+    // 5. Fallback to first quiz with questions or sampleQuestions
     const firstWithQ = quizzes.find((quiz) => quiz.questions && quiz.questions.length > 0);
     return firstWithQ?.questions || sampleQuestions;
   };
