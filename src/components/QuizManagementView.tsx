@@ -43,10 +43,7 @@ export const QuizManagementView: React.FC<QuizManagementViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [customFolders, setCustomFolders] = useState<string[]>([
-    'CÔNG NGHỆ 12',
-    'CÔNG NGHỆ 10',
-    'SINH HỌC 11',
-    'TOÁN HỌC 12'
+    'CÔNG NGHỆ 12'
   ]);
   const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');

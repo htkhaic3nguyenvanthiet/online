@@ -31,28 +31,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const menuItems: { id: ActiveTab; label: string; icon: React.ReactNode; badge?: string; badgeColor?: string; isSpecial?: boolean }[] = [
     { id: 'dashboard', label: 'Trang chủ', icon: <Home className="w-5 h-5" /> },
-    { id: 'classes', label: 'Quản lý lớp', icon: <Users className="w-5 h-5" /> },
-    { id: 'quizzes', label: 'Kho đề kiểm tra', icon: <FolderKanban className="w-5 h-5" /> },
-    { id: 'online-sessions', label: 'Giao đề Online', icon: <Send className="w-5 h-5" />, badge: '18', badgeColor: 'bg-emerald-500' },
+    { id: 'quizzes', label: 'Kho đề kiểm tra', icon: <FolderKanban className="w-5 h-5" />, badge: 'TT 7991', badgeColor: 'bg-emerald-600' },
+    { id: 'online-sessions', label: 'Giao đề Online', icon: <Send className="w-5 h-5" />, badge: 'Đang mở', badgeColor: 'bg-emerald-500' },
     {
       id: 'attendance-summary',
       label: 'Bảng điểm & Điểm danh',
       icon: <ClipboardCheck className="w-5 h-5 text-emerald-300 group-hover:text-white" />,
-      badge: 'Thống kê',
+      badge: 'TT 22',
       badgeColor: 'bg-teal-500'
     },
-    { id: 'paper-exam', label: 'Giao đề giấy', icon: <FileText className="w-5 h-5" /> },
-    { id: 'kids-quiz', label: 'Giao đề Thiếu nhi', icon: <Palette className="w-5 h-5" /> },
-    { 
-      id: 'game-arena', 
-      label: 'Game học tập', 
-      icon: <Gamepad2 className="w-5 h-5 text-rose-300 group-hover:text-white" />,
-      badge: 'Đấu trường',
-      badgeColor: 'bg-rose-500',
-      isSpecial: true
-    },
-    { id: 'shared-store', label: 'Kho nội dung chia sẻ', icon: <BookOpen className="w-5 h-5" /> },
-    { id: 'offline-exam', label: 'Kiểm tra Offline', icon: <Laptop className="w-5 h-5" /> },
+    { id: 'classes', label: 'Quản lý lớp', icon: <Users className="w-5 h-5" /> },
     {
       id: 'live-monitor',
       label: 'Bảng điểm Real-time',

@@ -12,10 +12,6 @@ import { DashboardView } from './components/DashboardView';
 import { QuizManagementView } from './components/QuizManagementView';
 import { ClassroomsView } from './components/ClassroomsView';
 import { OnlineSessionsView } from './components/OnlineSessionsView';
-import { GameArenaTeacherView } from './components/GameArenaTeacherView';
-import { SharedContentStoreView } from './components/SharedContentStoreView';
-import { PaperExamView } from './components/PaperExamView';
-import { OfflineExamView } from './components/OfflineExamView';
 import { Live500StressTestMonitor } from './components/Live500StressTestMonitor';
 import { StudentArenaView } from './components/StudentArenaView';
 import { CreateQuizModal } from './components/CreateQuizModal';
@@ -151,9 +147,27 @@ export default function App() {
   useEffect(() => {
     cloudStorageService.fetchFromCloud(currentSyncKey).then((cloudData) => {
       if (cloudData) {
-        if (cloudData.quizzes && cloudData.quizzes.length > 0) setQuizzes(cloudData.quizzes);
+        if (cloudData.quizzes && cloudData.quizzes.length > 0) {
+          const filteredQuizzes = cloudData.quizzes.filter(
+            (q) =>
+              q.id === 'quiz-cn12' ||
+              (!q.id.startsWith('quiz-sinh-2025') &&
+                !q.id.startsWith('quiz-trong-trot') &&
+                !q.id.startsWith('quiz-dat-trong') &&
+                !q.id.startsWith('quiz-phan-bon') &&
+                !q.id.startsWith('sq-imp'))
+          );
+          if (filteredQuizzes.length > 0) setQuizzes(filteredQuizzes);
+        }
         if (cloudData.classrooms && cloudData.classrooms.length > 0) setClassrooms(cloudData.classrooms);
-        if (cloudData.sessions && cloudData.sessions.length > 0) setSessions(cloudData.sessions);
+        if (cloudData.sessions && cloudData.sessions.length > 0) {
+          const filteredSessions = cloudData.sessions.filter(
+            (s) =>
+              s.id === '4975878' ||
+              (!s.id.startsWith('sess-de-cuong') && !s.id.startsWith('sess-on-tap'))
+          );
+          if (filteredSessions.length > 0) setSessions(filteredSessions);
+        }
       }
     });
   }, [currentSyncKey]);
@@ -483,52 +497,6 @@ export default function App() {
                 />
               )}
 
-              {currentTab === 'game-arena' && (
-                <GameArenaTeacherView
-                  onStartStudentExam={(title) => {
-                    setActiveStudentExamTitle(title);
-                    setAppMode('student');
-                  }}
-                  onOpenLiveMonitor={() => setCurrentTab('live-monitor')}
-                />
-              )}
-
-              {currentTab === 'kids-quiz' && (
-                <GameArenaTeacherView
-                  onStartStudentExam={(title) => {
-                    setActiveStudentExamTitle('ĐỀ THIẾU NHI - ' + title);
-                    setAppMode('student');
-                  }}
-                  onOpenLiveMonitor={() => setCurrentTab('live-monitor')}
-                />
-              )}
-
-              {currentTab === 'shared-store' && (
-                <SharedContentStoreView
-                  onImportToMyLibrary={(title, subject, qCount) => {
-                    const newQ: Quiz = {
-                      id: 'sq-imp-' + Date.now(),
-                      title,
-                      fileName: title.replace(/\s+/g, '_').slice(0, 30) + '.docx',
-                      subject,
-                      grade: 'Lớp 12',
-                      createdAt: new Date().toLocaleDateString('vi-VN'),
-                      questionCount: qCount,
-                      breakdown: `${qCount}-0-0-0`,
-                      durationMinutes: 45,
-                      totalPoints: 10,
-                      folder: subject.toUpperCase(),
-                      isInteractive: true,
-                      questions: []
-                    };
-                    setQuizzes((prev) => [newQ, ...prev]);
-                  }}
-                />
-              )}
-
-              {currentTab === 'paper-exam' && <PaperExamView />}
-
-              {currentTab === 'offline-exam' && <OfflineExamView />}
 
               {currentTab === 'live-monitor' && (
                 <Live500StressTestMonitor

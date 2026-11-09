@@ -144,14 +144,9 @@ export interface ConcurrentSystemMetrics {
 
 export type ActiveTab =
   | 'dashboard'
-  | 'classes'
   | 'quizzes'
   | 'online-sessions'
   | 'attendance-summary'
-  | 'paper-exam'
-  | 'kids-quiz'
-  | 'game-arena'
-  | 'shared-store'
-  | 'offline-exam'
+  | 'classes'
   | 'live-monitor'
   | 'account';
