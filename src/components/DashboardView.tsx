@@ -4,16 +4,7 @@ import {
   FolderKanban,
   Gamepad2,
   Send,
-  FileText,
-  Palette,
-  Laptop,
-  Newspaper,
-  TrendingUp,
-  Clock,
-  Sparkles,
-  ArrowRight,
   ShieldCheck,
-  CheckCircle,
   Zap,
   ClipboardCheck
 } from 'lucide-react';
@@ -192,66 +183,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 Quản lý lớp học
               </h3>
               <p className="text-xs text-slate-600 mt-1">Lớp 12A5, danh sách học sinh & mã số định danh</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Section 3: Tin tức & Hướng dẫn */}
-      <section className="space-y-3">
-        <div className="flex items-center gap-2 border-l-4 border-slate-400 pl-3">
-          <h2 className="text-base font-extrabold text-slate-800">Tin tức & Hướng dẫn Test Online</h2>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-2 bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs">
-            <div className="flex items-center gap-2 font-bold text-slate-800 text-sm mb-3">
-              <Newspaper className="w-4 h-4 text-emerald-600" />
-              <span>Tin tức Test Online - THPT Mang Thít</span>
-            </div>
-            <ul className="space-y-2.5 text-xs text-slate-600">
-              <li className="flex items-center gap-2 hover:text-emerald-700 cursor-pointer">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                <span>Hướng dẫn trộn đề trắc nghiệm môn Toán với Test Online</span>
-              </li>
-              <li className="flex items-center gap-2 hover:text-emerald-700 cursor-pointer">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                <span>Hướng dẫn trộn đề trắc nghiệm Tiếng Anh với Test Online</span>
-              </li>
-              <li className="flex items-center gap-2 hover:text-emerald-700 cursor-pointer">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                <span>Cấu hình phòng thi 500 học sinh đồng thời không gián đoạn kết nối mạng</span>
-              </li>
-              <li className="flex items-center gap-2 hover:text-emerald-700 cursor-pointer">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                <span>Máy tự động chấm trắc nghiệm & xuất bảng điểm Excel chuẩn Sở GD&ĐT</span>
-              </li>
-            </ul>
-          </div>
-
-          {/* Quick action card */}
-          <div className="bg-gradient-to-br from-emerald-50 to-teal-100/60 rounded-2xl p-5 border border-emerald-200 flex flex-col justify-between">
-            <div>
-              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 mb-1">
-                <CheckCircle className="w-4 h-4 text-emerald-600" />
-                <span>Bắt đầu nhanh</span>
-              </div>
-              <h4 className="font-extrabold text-sm text-slate-900">Tạo đề thi mới ngay</h4>
-              <p className="text-xs text-slate-600 mt-1">
-                Hỗ trợ nhập trực tiếp từ file Word (.docx) giữ nguyên công thức toán học và hình vẽ.
-              </p>
-            </div>
-            <div className="mt-4">
-              <button
-                onClick={() => {
-                  soundEffects.playClick();
-                  onNavigate('quizzes');
-                }}
-                className="btn-3d btn-3d-teal w-full py-2 text-xs rounded-xl flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <span>Mở Kho Đề Kiểm Tra</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
             </div>
           </div>
         </div>
