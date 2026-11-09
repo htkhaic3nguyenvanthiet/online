@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   ClipboardCheck,
   Users,
@@ -27,7 +27,9 @@ import {
 import { ExamSession, Quiz, Classroom, StudentSubmission, Student } from '../types/quiz';
 import { soundEffects } from '../utils/soundEffects';
 import { getStudentExamShareUrl, getStudentExamEmbeddedShareUrl } from '../utils/urlHelper';
-import { getExamStoreConfig, isExamStoreTeacherReady, listStoreSubmissions } from '../services/examStoreService';
+import { isExamStoreTeacherReady } from '../services/examStoreService';
+import { fetchMergedStoreSubmissions } from '../services/storeSubmissions';
+import { realtimeEngine } from '../services/realtimeEngine';
 
 interface ExamSummaryAttendanceViewProps {
   sessions: ExamSession[];
@@ -109,67 +111,47 @@ export const ExamSummaryAttendanceView: React.FC<ExamSummaryAttendanceViewProps>
   const [storeLoadStatus, setStoreLoadStatus] = useState<string | null>(null);
   const [isLoadingStoreSubs, setIsLoadingStoreSubs] = useState(false);
 
-  const handleLoadStoreSubmissions = async () => {
+  const handleLoadStoreSubmissions = async (auto = false) => {
     if (!currentSession?.storeExamId) return;
-    soundEffects.playClick();
-    const cfg = getExamStoreConfig();
+    if (!auto) soundEffects.playClick();
     setIsLoadingStoreSubs(true);
-    setStoreLoadStatus('Đang tải kết quả từ Kho đề (Google Sheet)...');
-    const rows = await listStoreSubmissions(cfg, currentSession.storeExamId);
+    if (!auto) setStoreLoadStatus('Đang tải kết quả từ Kho đề (Google Sheet)...');
+    // Danh sách cục bộ của phiên này — dùng làm chuẩn khử trùng trong helper dùng chung
+    const localRef = submissions.filter(
+      (sub) => sub.sessionId === currentSession.id || sub.sessionId === currentSession.quizId
+    );
+    const res = await fetchMergedStoreSubmissions(currentSession, localRef);
     setIsLoadingStoreSubs(false);
-    if (!rows) {
-      setStoreLoadStatus('Không tải được kết quả từ Kho. Kiểm tra lại URL Web App và Mã bảo mật trong mục Cài đặt.');
-      soundEffects.playWarning();
+    if (res.error) {
+      setStoreLoadStatus(res.error);
+      if (!auto) soundEffects.playWarning();
       return;
     }
-    // Khử trùng: bài nộp trên chính máy này đã có trong danh sách realtime
-    // (khớp theo submissionId trong detail, hoặc họ tên + thời điểm nộp).
-    const localIds = new Set(submissions.map((s) => s.id));
-    const localKeys = new Set(
-      submissions.map((s) => `${s.studentName.trim().toLowerCase()}|${s.submittedAt}`)
-    );
-    const seenStoreKeys = new Set<string>();
-    const converted: StudentSubmission[] = [];
-    rows.forEach((r, idx) => {
-      const d = (r.detail || {}) as Record<string, any>;
-      const storeKey = `${r.studentName.trim().toLowerCase()}|${r.timestamp}`;
-      if (seenStoreKeys.has(storeKey)) return;
-      seenStoreKeys.add(storeKey);
-      if (d.submissionId && localIds.has(String(d.submissionId))) return;
-      const parsedTime = new Date(r.timestamp);
-      const displayTime = isNaN(parsedTime.getTime()) ? r.timestamp : parsedTime.toLocaleString('vi-VN');
-      if (localKeys.has(`${r.studentName.trim().toLowerCase()}|${displayTime}`)) return;
-      converted.push({
-        id: 'store-' + currentSession.storeExamId + '-' + idx,
-        sessionId: currentSession.id,
-        studentName: r.studentName,
-        studentInfo: String(d.studentInfo || r.className || ''),
-        score: r.score,
-        totalPoints: r.totalPoints,
-        correctAnswersCount: Number(d.correctAnswersCount ?? 0),
-        wrongAnswersCount: d.wrongAnswersCount != null ? Number(d.wrongAnswersCount) : undefined,
-        unansweredCount: d.unansweredCount != null ? Number(d.unansweredCount) : undefined,
-        totalQuestions: Number(d.totalQuestions ?? currentSession.questionCount ?? 0),
-        submittedAt: displayTime,
-        durationSeconds: Number(d.durationSeconds ?? 0),
-        streakMax: 0,
-        answers: (d.answers as Record<string, any>) || {},
-        autoGraded: true,
-        attemptNumber: d.attemptNumber != null ? Number(d.attemptNumber) : undefined,
-        isDisqualified: !!d.isDisqualified,
-      });
-    });
-    setStoreSubs((prev) => {
-      const prevIds = new Set(prev.map((s) => s.id));
-      return [...converted.filter((s) => !prevIds.has(s.id)), ...prev];
-    });
+    setStoreSubs(res.submissions);
+    // Gộp luôn vào state dùng chung để các bảng điểm khác (modal Thống kê,
+    // danh sách phiên...) cũng thấy các kết quả này mà không cần tải lại
+    if (res.submissions.length > 0) {
+      realtimeEngine.mergeExternalSubmissions(res.submissions);
+    }
     setStoreLoadStatus(
-      converted.length > 0
-        ? `✓ Đã tải thêm ${converted.length} kết quả từ Kho đề (Google Sheet).`
-        : 'Đã đồng bộ với Kho — chưa có kết quả mới nào từ học sinh thi trên máy khác.'
+      res.submissions.length > 0
+        ? `✓ Đã đồng bộ ${res.submissions.length} kết quả từ Kho đề (Google Sheet).`
+        : 'Đã đồng bộ với Kho — chưa có kết quả nào của học sinh trên Kho.'
     );
-    soundEffects.playCorrect();
+    if (!auto) soundEffects.playCorrect();
   };
+
+  // Tự động tải kết quả từ Kho mỗi khi mở trang / đổi phiên thi gắn Kho
+  useEffect(() => {
+    if (currentSession?.storeExamId && isExamStoreTeacherReady()) {
+      handleLoadStoreSubmissions(true);
+    } else {
+      setStoreSubs([]);
+      setStoreLoadStatus(null);
+    }
+    // Chỉ chạy lại khi đổi phiên — handleLoadStoreSubmissions đọc state/props hiện tại
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSession?.id, currentSession?.storeExamId]);
 
   // Combine roster students and identify submissions for this exam session
   const examSubmissions = useMemo(() => {
@@ -573,7 +555,7 @@ ${shareLink}
 
             {currentSession.storeExamId && isExamStoreTeacherReady() && (
               <button
-                onClick={handleLoadStoreSubmissions}
+                onClick={() => handleLoadStoreSubmissions(false)}
                 disabled={isLoadingStoreSubs}
                 className="btn-3d btn-3d-teal px-3.5 py-2 text-xs rounded-xl font-bold flex items-center gap-1.5 cursor-pointer text-white"
                 title="Tải kết quả học sinh đã nộp về Kho đề (Google Sheet) — gồm cả bài làm trên máy khác"

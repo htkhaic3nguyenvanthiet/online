@@ -2,7 +2,7 @@ import { ConcurrentSystemMetrics, StudentSubmission, OptionKey } from '../types/
 import { soundEffects } from '../utils/soundEffects';
 
 type RealtimeListener = (event: {
-  type: 'NEW_SUBMISSION' | 'METRICS_UPDATE' | 'STUDENT_ANSWER_STREAM';
+  type: 'NEW_SUBMISSION' | 'METRICS_UPDATE' | 'STUDENT_ANSWER_STREAM' | 'SUBMISSIONS_SYNCED';
   data: unknown;
 }) => void;
 
@@ -91,7 +91,7 @@ class RealtimeEngine {
     return () => this.listeners.delete(listener);
   }
 
-  private notify(event: { type: 'NEW_SUBMISSION' | 'METRICS_UPDATE' | 'STUDENT_ANSWER_STREAM'; data: unknown }) {
+  private notify(event: { type: 'NEW_SUBMISSION' | 'METRICS_UPDATE' | 'STUDENT_ANSWER_STREAM' | 'SUBMISSIONS_SYNCED'; data: unknown }) {
     this.listeners.forEach((listener) => {
       try {
         listener(event);
@@ -103,6 +103,25 @@ class RealtimeEngine {
 
   public getSubmissions(): StudentSubmission[] {
     return [...this.submissions];
+  }
+
+  /**
+   * Gộp kết quả từ nguồn ngoài (Kho đề trực tuyến) vào kho submissions
+   * dùng chung mà mọi màn hình bảng điểm cùng đọc. Khử trùng theo id
+   * (bản ghi từ Kho có id ổn định "store-..." qua các lần tải). Trả về số
+   * bản ghi THỰC SỰ được thêm mới; phát sự kiện SUBMISSIONS_SYNCED (App
+   * chỉ làm mới danh sách, KHÔNG bật toast "vừa nộp bài" như bài nộp trực
+   * tiếp) và lưu cache như bài nộp thường.
+   */
+  public mergeExternalSubmissions(incoming: StudentSubmission[]): number {
+    if (!incoming || incoming.length === 0) return 0;
+    const existingIds = new Set(this.submissions.map((s) => s.id));
+    const fresh = incoming.filter((s) => s && s.id && !existingIds.has(s.id));
+    if (fresh.length === 0) return 0;
+    this.submissions = [...this.submissions, ...fresh];
+    this.saveSubmissions();
+    this.notify({ type: 'SUBMISSIONS_SYNCED', data: fresh });
+    return fresh.length;
   }
 
   public getMetrics(): ConcurrentSystemMetrics {

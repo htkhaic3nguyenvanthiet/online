@@ -642,8 +642,12 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
           unansweredCount: sub.unansweredCount,
           totalQuestions: sub.totalQuestions,
           durationSeconds: sub.durationSeconds,
+          streakMax: sub.streakMax,
+          tabSwitchCount: sub.tabSwitchCount,
+          cheatLogs: sub.cheatLogs,
           attemptNumber: sub.attemptNumber,
           isDisqualified: sub.isDisqualified || false,
+          disqualificationReason: sub.disqualificationReason,
           answers: sub.answers,
           submittedAt: new Date().toISOString()
         }

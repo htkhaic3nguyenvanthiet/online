@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Send,
   Search,
@@ -20,6 +20,7 @@ import {
   ShieldCheck,
   ShieldAlert,
   RotateCcw,
+  RefreshCw,
   Calendar,
   Lock,
   Layers,
@@ -42,6 +43,8 @@ import { soundEffects } from '../utils/soundEffects';
 import { getStudentExamShareUrl, getStudentExamEmbeddedShareUrl, getStudentExamStoreShareUrl } from '../utils/urlHelper';
 import { cloudStorageService } from '../services/cloudStorageService';
 import { getExamStoreConfig, isExamStoreTeacherReady, publishExamToStore } from '../services/examStoreService';
+import { fetchMergedStoreSubmissions, filterDuplicateStoreSubmissions } from '../services/storeSubmissions';
+import { realtimeEngine } from '../services/realtimeEngine';
 import QRCode from 'qrcode';
 
 interface OnlineSessionsViewProps {
@@ -58,6 +61,31 @@ interface OnlineSessionsViewProps {
   onAddNewSession?: (newSession: ExamSession) => void;
   onUpdateSession?: (updatedSession: ExamSession) => void;
   onResetStudentAttempts?: (sessionId: string, studentName: string) => void;
+}
+
+// Cache đồng bộ Kho theo id phiên — sống suốt vòng đời của trang (module
+// level, không mất khi chuyển tab rồi quay lại). Mỗi phiên gắn Kho chỉ tự
+// đồng bộ nền MỘT lần; nút "Làm mới từ Kho" trong modal Thống kê là đường
+// tải lại thủ công (và cũng đánh dấu đã đồng bộ).
+const storeSyncedSessionIds = new Set<string>();
+
+const STORE_SYNC_CONCURRENCY = 3;
+
+/** Chạy các tác vụ async với tối đa `limit` tác vụ đồng thời (tránh bắn
+ *  hàng loạt request lên Apps Script cùng lúc). */
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<void>
+): Promise<void> {
+  let cursor = 0;
+  const runners = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+    while (cursor < items.length) {
+      const item = items[cursor++];
+      await worker(item);
+    }
+  });
+  await Promise.all(runners);
 }
 
 export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
@@ -80,6 +108,46 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('all');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [activeQrModal, setActiveQrModal] = useState<ExamSession | null>(null);
+
+  // --- Đồng bộ nền kết quả từ Kho cho MỌI phiên gắn Kho ---
+  // Mở trang là dữ liệu của từng bài kiểm tra tự đầy đủ ở tầng state dùng
+  // chung (realtimeEngine) mà mọi bảng điểm cùng đọc — không cần bấm vào
+  // từng phiên. Một phiên tải lỗi không chặn các phiên khác và không hiện
+  // thông báo ồn ào (lỗi chỉ hiện ở dòng trạng thái trong modal Thống kê).
+  const submissionsRef = useRef<StudentSubmission[]>(submissions);
+  submissionsRef.current = submissions;
+
+  const storeSessionKey = sessions
+    .filter((s) => s.storeExamId)
+    .map((s) => s.id)
+    .sort()
+    .join(',');
+
+  useEffect(() => {
+    const targets = sessions.filter((s) => s.storeExamId && !storeSyncedSessionIds.has(s.id));
+    if (targets.length === 0) return;
+    let cancelled = false;
+    runWithConcurrency(targets, STORE_SYNC_CONCURRENCY, async (sess) => {
+      if (cancelled) return;
+      // Đánh dấu TRƯỚC khi tải: phiên lỗi cũng không tự thử lại liên tục;
+      // giáo viên vẫn còn đường "Làm mới từ Kho" trong modal của phiên đó.
+      storeSyncedSessionIds.add(sess.id);
+      try {
+        const localForSession = (submissionsRef.current || []).filter((s) => s.sessionId === sess.id);
+        const res = await fetchMergedStoreSubmissions(sess, localForSession);
+        if (!cancelled && !res.error && res.submissions.length > 0) {
+          realtimeEngine.mergeExternalSubmissions(res.submissions);
+        }
+      } catch {
+        // Bỏ qua lặng lẽ — xem ghi chú phía trên
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Chỉ chạy lại khi tập phiên gắn Kho thay đổi
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeSessionKey]);
 
   // Link thi cho modal chia sẻ. ƯU TIÊN Kho đề trực tuyến: link rút gọn chỉ
   // mang mã đề + mã QR THẬT quét được. Chưa có Kho thì dùng link chứa sẵn
@@ -132,6 +200,54 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
   const [statsSearchTerm, setStatsSearchTerm] = useState('');
   const [statsGradeFilter, setStatsGradeFilter] = useState<'all' | 'gioi' | 'kha' | 'trungbinh' | 'yeu'>('all');
   const [inspectingSub, setInspectingSub] = useState<StudentSubmission | null>(null);
+
+  // Kết quả từ Kho đề trực tuyến cho modal Thống kê: tự tải khi mở modal /
+  // đổi phiên gắn Kho, gộp vào mọi con số thống kê + bảng điểm + xuất Excel.
+  const [statsStore, setStatsStore] = useState<{
+    sessionId: string;
+    subs: StudentSubmission[];
+    statusText: string;
+    isError: boolean;
+  } | null>(null);
+  const [statsStoreLoading, setStatsStoreLoading] = useState(false);
+
+  const loadStatsStoreSubmissions = async (session: ExamSession) => {
+    if (!session.storeExamId) return;
+    setStatsStoreLoading(true);
+    const localForSession = (submissions || []).filter((s) => s.sessionId === session.id);
+    const res = await fetchMergedStoreSubmissions(session, localForSession);
+    setStatsStoreLoading(false);
+    storeSyncedSessionIds.add(session.id);
+    if (res.error) {
+      setStatsStore({ sessionId: session.id, subs: [], statusText: res.error, isError: true });
+      return;
+    }
+    // Gộp luôn vào state dùng chung để mọi bảng điểm khác cũng thấy kết quả
+    if (res.submissions.length > 0) {
+      realtimeEngine.mergeExternalSubmissions(res.submissions);
+    }
+    // Số kết quả từ Kho của phiên = phần đã có sẵn trong danh sách chung
+    // (đồng bộ nền trước đó) + phần vừa tải thêm lần này
+    const alreadyPresent = localForSession.filter((s) => s.id.startsWith('store-')).length;
+    const now = new Date();
+    const hhmm = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+    setStatsStore({
+      sessionId: session.id,
+      subs: res.submissions,
+      statusText: `Kho trực tuyến: đã tải ${alreadyPresent + res.submissions.length} kết quả • ${hhmm}`,
+      isError: false,
+    });
+  };
+
+  useEffect(() => {
+    if (activeStatsSession?.storeExamId) {
+      loadStatsStoreSubmissions(activeStatsSession);
+    } else {
+      setStatsStore(null);
+    }
+    // Chỉ chạy lại khi mở modal / đổi phiên — loader đọc props hiện tại
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeStatsSession?.id, activeStatsSession?.storeExamId]);
 
   // Configure / Assign Modal State
   const [configModalSession, setConfigModalSession] = useState<ExamSession | null>(null);
@@ -622,7 +738,13 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
 
       {/* MODAL: BẢNG THỐNG KÊ KẾT QUẢ & ĐÁNH GIÁ ĐIỂM SỐ RIÊNG CHO TỪNG ĐỀ (PER-SESSION RESULTS & EXCEL EXPORT) */}
       {activeStatsSession && (() => {
-        const curSessionSubs = (submissions || []).filter((s) => s.sessionId === activeStatsSession.id);
+        const localSessionSubs = (submissions || []).filter((s) => s.sessionId === activeStatsSession.id);
+        // Gộp kết quả từ Kho (đã khử trùng ở tầng dòng lúc tải; khử thêm một
+        // lượt ở tầng bản ghi phòng khi có bài cục bộ mới phát sinh sau đó).
+        const storeSessionSubs = statsStore && statsStore.sessionId === activeStatsSession.id
+          ? filterDuplicateStoreSubmissions(localSessionSubs, statsStore.subs)
+          : [];
+        const curSessionSubs = [...localSessionSubs, ...storeSessionSubs];
         const totalSubs = curSessionSubs.length;
 
         // Statistics computation
@@ -698,6 +820,35 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
                   </button>
                 </div>
               </div>
+
+              {/* Trạng thái đồng bộ Kho trực tuyến (chỉ với phiên gắn Kho) */}
+              {activeStatsSession.storeExamId && (
+                <div className="flex items-center justify-between gap-2 -mt-2 shrink-0">
+                  <span
+                    className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${
+                      statsStore?.isError ? 'text-amber-600' : 'text-teal-700'
+                    }`}
+                  >
+                    {statsStore?.isError ? (
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    ) : (
+                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                    )}
+                    {statsStoreLoading
+                      ? 'Kho trực tuyến: đang tải kết quả...'
+                      : statsStore?.statusText || 'Kho trực tuyến: đang chờ tải kết quả...'}
+                  </span>
+                  <button
+                    onClick={() => loadStatsStoreSubmissions(activeStatsSession)}
+                    disabled={statsStoreLoading}
+                    className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 disabled:opacity-50 cursor-pointer"
+                    title="Tải lại kết quả mới nhất từ Kho đề (Google Sheet)"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${statsStoreLoading ? 'animate-spin' : ''}`} />
+                    Làm mới từ Kho
+                  </button>
+                </div>
+              )}
 
               {/* Body Viewport */}
               <div className="overflow-y-auto space-y-4 pr-1">

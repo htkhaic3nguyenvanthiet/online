@@ -299,6 +299,9 @@ export default function App() {
         const sub = event.data as StudentSubmission;
         setSubmissions(realtimeEngine.getSubmissions());
         setLatestToastSub(sub);
+      } else if (event.type === 'SUBMISSIONS_SYNCED') {
+        // Đồng bộ nền từ Kho đề trực tuyến: chỉ làm mới danh sách, không toast
+        setSubmissions(realtimeEngine.getSubmissions());
       } else if (event.type === 'METRICS_UPDATE') {
         const updated = realtimeEngine.getMetrics();
         setMetrics(updated);
