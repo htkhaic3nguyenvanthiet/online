@@ -4,7 +4,8 @@ import { mockClassrooms, mockSessions } from './data/mockData';
 import { realtimeEngine } from './services/realtimeEngine';
 import { soundEffects } from './utils/soundEffects';
 import { cloudStorageService } from './services/cloudStorageService';
-import { getStudentExamShareUrl, getExamIdFromUrl, getEmbeddedExamPayloadFromLocation, buildSessionFromEmbeddedPayload, getStudentExamEmbeddedShareUrl } from './utils/urlHelper';
+import { getExamStoreConfig, isExamStoreTeacherReady, publishExamToStore, fetchExamFromStore } from './services/examStoreService';
+import { getStudentExamShareUrl, getExamIdFromUrl, getEmbeddedExamPayloadFromLocation, buildSessionFromEmbeddedPayload, getStudentExamEmbeddedShareUrl, getStoreUrlFromLocation, getStudentExamStoreShareUrl } from './utils/urlHelper';
 
 import { TopNavbar } from './components/TopNavbar';
 import { Sidebar } from './components/Sidebar';
@@ -99,6 +100,58 @@ export default function App() {
         setIsDirectStudentMode(true);
         setIsExamLoading(true);
         setAppMode('student');
+
+        // 2. KHO ĐỀ TRỰC TUYẾN (Google): link rút gọn ?exam=<mã đề> kèm #s=
+        // (địa chỉ Kho mang theo trong link) hoặc cấu hình Kho đã lưu trên máy
+        // giáo viên. Tải đúng đề từ Drive của giáo viên — không cần link dài.
+        const storeUrl = getStoreUrlFromLocation() || getExamStoreConfig().storeUrl;
+        if (storeUrl) {
+          const storePayload = await fetchExamFromStore(storeUrl, examParam);
+          if (storePayload && storePayload.questions.length > 0) {
+            const sp = storePayload.session;
+            const storeQuiz = storePayload.quiz;
+            const resolvedDuration = sp?.durationMinutes || storeQuiz?.durationMinutes || sp?.scoringConfig?.durationMinutes || 50;
+            const hints = storeQuiz?.scoringHints;
+            const storeSess: ExamSession = {
+              id: sp?.id || examParam,
+              title: sp?.title || storeQuiz?.title || 'Bài kiểm tra trực tuyến',
+              quizId: sp?.quizId || storeQuiz?.id || 'quiz-' + examParam,
+              className: sp?.className || 'Khối 12',
+              startTime: sp?.startTime || 'Đang mở',
+              endTime: sp?.endTime || 'Sau 30 ngày',
+              status: 'active',
+              shareUrl: getStudentExamStoreShareUrl(storePayload.examId || examParam, storeUrl),
+              allowedAttempts: sp?.allowedAttempts || 5,
+              durationMinutes: resolvedDuration,
+              totalSubmissions: 0,
+              maxSlots: 500,
+              isArenaMode: sp?.isArenaMode ?? true,
+              questionCount: storePayload.questions.length,
+              questions: storePayload.questions,
+              antiCheatConfig: sp?.antiCheatConfig,
+              scoringConfig: sp?.scoringConfig || {
+                totalPoints: 10,
+                durationMinutes: resolvedDuration,
+                part1PointPerQuestion: hints?.part1PointPerQuestion ?? 0.25,
+                part2PointPerQuestion: hints?.part2PointPerQuestion ?? 1.0,
+                part3PointPerQuestion: hints?.part3PointPerQuestion ?? 0.25,
+                allowViewAnswerKey: true,
+                viewAnswerMinScore: 4.0,
+                allowAiTutorExplanation: true,
+              },
+              storeExamId: storePayload.examId || examParam,
+              storeUrl,
+            };
+            setActiveStudentExamSession(storeSess);
+            setActiveStudentExamTitle(storeSess.title);
+            setSessions((prev) => [storeSess, ...prev.filter((s) => s.id !== storeSess.id)]);
+            if (storeQuiz) {
+              setQuizzes((prev) => [{ ...storeQuiz, questions: storePayload.questions }, ...prev.filter((q) => q.id !== storeQuiz.id)]);
+            }
+            setIsExamLoading(false);
+            return;
+          }
+        }
 
         // Fetch exam & questions from server/local store (khớp id chính xác)
         cloudStorageService
@@ -363,9 +416,26 @@ export default function App() {
         blockAIInExam: true
       }
     };
-    // Link chia sẻ mặc định = link chứa sẵn toàn bộ đề thi, học sinh mở đúng
-    // đề trên mọi thiết bị (trang tĩnh không có máy chủ dùng chung).
-    newSession.shareUrl = await getStudentExamEmbeddedShareUrl(newSession, quiz, quiz.questions || []);
+    // ƯU TIÊN: đăng đề lên Kho đề trực tuyến (Google Drive của giáo viên) —
+    // link thi rút gọn chỉ còn mã đề ngắn, quét QR được, và kết quả học sinh
+    // nộp bài chảy về Sheet. Kho chưa cấu hình hoặc đăng thất bại thì lùi về
+    // link chứa sẵn toàn bộ đề như trước (không bao giờ chặn việc giao đề).
+    const storeCfg = getExamStoreConfig();
+    if (isExamStoreTeacherReady(storeCfg)) {
+      const published = await publishExamToStore(storeCfg, {
+        session: newSession,
+        quiz,
+        questions: quiz.questions || [],
+      });
+      if (published) {
+        newSession.storeExamId = published.examId;
+        newSession.storeUrl = storeCfg.storeUrl;
+        newSession.shareUrl = getStudentExamStoreShareUrl(published.examId, storeCfg.storeUrl);
+      }
+    }
+    if (!newSession.storeExamId) {
+      newSession.shareUrl = await getStudentExamEmbeddedShareUrl(newSession, quiz, quiz.questions || []);
+    }
     const updatedSessions = [newSession, ...sessions];
     setSessions(updatedSessions);
     cloudStorageService.publishExamDirectly({

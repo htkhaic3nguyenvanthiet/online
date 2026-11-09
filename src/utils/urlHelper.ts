@@ -65,6 +65,10 @@ export interface EmbeddedExamPayload {
     isArenaMode?: boolean;
     antiCheatConfig?: ExamSession['antiCheatConfig'];
     scoringConfig?: ExamSession['scoringConfig'];
+    // Khi phiên thi đã đăng lên Kho đề: mang theo mã Kho để học sinh mở link
+    // nhúng (#d=) vẫn nộp kết quả về đúng đề trên Sheet của giáo viên.
+    storeExamId?: string;
+    storeUrl?: string;
   };
   quizTitle: string;
   questions: Question[];
@@ -88,7 +92,9 @@ export function buildEmbeddedExamPayload(
       allowedAttempts: session.allowedAttempts,
       isArenaMode: session.isArenaMode,
       antiCheatConfig: session.antiCheatConfig,
-      scoringConfig: session.scoringConfig
+      scoringConfig: session.scoringConfig,
+      storeExamId: session.storeExamId,
+      storeUrl: session.storeUrl
     },
     quizTitle: quiz?.title || session.title,
     questions
@@ -213,6 +219,50 @@ export function buildSessionFromEmbeddedPayload(payload: EmbeddedExamPayload): E
     questionCount: payload.questions.length,
     questions: payload.questions,
     antiCheatConfig: s.antiCheatConfig,
-    scoringConfig: s.scoringConfig
+    scoringConfig: s.scoringConfig,
+    // Đích nộp bài về Kho: ưu tiên #s= trong link hiện tại, sau đó mới tới
+    // địa chỉ Kho đã gói sẵn trong payload khi giáo viên tạo link.
+    storeExamId: s.storeExamId,
+    storeUrl: getStoreUrlFromLocation() || s.storeUrl
   };
+}
+
+// ---------------------------------------------------------------------------
+// KHO ĐỀ TRỰC TUYẾN (Google): link thi rút gọn chỉ mang MÃ ĐỀ ngắn.
+//   <trang>?exam=<storeExamId>#s=<base64url(địa chỉ Web App của Kho)>
+// Fragment #s= cho trình duyệt của học sinh (máy mới tinh, chưa từng cấu hình)
+// biết phải tải đề và nộp kết quả về Kho nào. Fragment #d= (đề nhúng sẵn) và
+// #s= có thể cùng tồn tại: #d= thắng về nội dung, #s= vẫn là đích nộp bài.
+// ---------------------------------------------------------------------------
+
+export function encodeStoreUrlToken(storeUrl: string): string {
+  const bytes = new TextEncoder().encode((storeUrl || '').trim());
+  return bytesToBase64Url(bytes);
+}
+
+export function decodeStoreUrlToken(token: string): string | null {
+  try {
+    if (!token) return null;
+    const url = new TextDecoder().decode(base64UrlToBytes(token)).trim();
+    if (!/^https?:\/\//i.test(url)) return null;
+    return url;
+  } catch {
+    return null;
+  }
+}
+
+/** Đọc địa chỉ Kho mang theo trong link (#s=...); null nếu link không có. */
+export function getStoreUrlFromLocation(): string | null {
+  if (typeof window === 'undefined') return null;
+  const hash = window.location.hash || '';
+  const m = hash.match(/[#&]s=([A-Za-z0-9_-]+)/);
+  if (!m) return null;
+  return decodeStoreUrlToken(m[1]);
+}
+
+/** Link thi rút gọn khi đề đã đăng lên Kho: chỉ mang mã đề + địa chỉ Kho. */
+export function getStudentExamStoreShareUrl(storeExamId: string, storeUrl: string): string {
+  const base = getStudentExamShareUrl(storeExamId);
+  if (!storeUrl) return base;
+  return `${base}#s=${encodeStoreUrlToken(storeUrl)}`;
 }

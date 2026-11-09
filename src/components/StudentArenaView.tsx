@@ -30,6 +30,7 @@ import { OptionKey, Question, ExamSession, StudentSubmission, CheatLog } from '.
 import { RichText, richToPlain } from './RichText';
 import { soundEffects } from '../utils/soundEffects';
 import { realtimeEngine } from '../services/realtimeEngine';
+import { submitResultToStore } from '../services/examStoreService';
 import { aiService } from '../services/aiService';
 
 interface StudentArenaViewProps {
@@ -622,6 +623,32 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
       isDisqualified: disqualified,
       disqualificationReason: disReason
     });
+
+    // Kho đề trực tuyến: nếu phiên thi gắn với một đề trên Kho (Google),
+    // gửi thêm kết quả về Sheet của giáo viên. Fire-and-forget — lỗi mạng
+    // tuyệt đối không được làm phiền học sinh đang xem kết quả.
+    if (session?.storeExamId && session?.storeUrl) {
+      submitResultToStore(session.storeUrl, session.storeExamId, {
+        studentName: sub.studentName,
+        className: session.className || (sub.studentInfo || '').split(' - ')[0] || '',
+        score: sub.score,
+        totalPoints: sub.totalPoints,
+        detail: {
+          submissionId: sub.id,
+          studentInfo: sub.studentInfo,
+          sessionId: sub.sessionId,
+          correctAnswersCount: sub.correctAnswersCount,
+          wrongAnswersCount: sub.wrongAnswersCount,
+          unansweredCount: sub.unansweredCount,
+          totalQuestions: sub.totalQuestions,
+          durationSeconds: sub.durationSeconds,
+          attemptNumber: sub.attemptNumber,
+          isDisqualified: sub.isDisqualified || false,
+          answers: sub.answers,
+          submittedAt: new Date().toISOString()
+        }
+      }).catch(() => {});
+    }
 
     // Save completed attempt count in localStorage
     try {

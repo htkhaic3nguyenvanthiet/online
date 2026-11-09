@@ -135,6 +135,12 @@ export interface ExamSession {
   questions?: Question[]; // Exact 100% teacher-authored question collection
   antiCheatConfig?: AntiCheatConfig;
   scoringConfig?: ExamScoringConfig;
+  // --- Kho đề trực tuyến (Google Apps Script) ---
+  // Mã đề ngắn trên Kho (8 ký tự) và URL Web App của Kho. Khi có hai trường
+  // này, link thi rút gọn chỉ mang mã đề (?exam=<storeExamId>#s=<kho>) và
+  // kết quả học sinh nộp bài được gửi về Sheet của giáo viên.
+  storeExamId?: string;
+  storeUrl?: string;
 }
 
 export interface CheatLog {

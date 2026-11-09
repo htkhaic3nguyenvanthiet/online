@@ -27,6 +27,7 @@ import {
 import { ExamSession, Quiz, Classroom, StudentSubmission, Student } from '../types/quiz';
 import { soundEffects } from '../utils/soundEffects';
 import { getStudentExamShareUrl, getStudentExamEmbeddedShareUrl } from '../utils/urlHelper';
+import { getExamStoreConfig, isExamStoreTeacherReady, listStoreSubmissions } from '../services/examStoreService';
 
 interface ExamSummaryAttendanceViewProps {
   sessions: ExamSession[];
@@ -103,11 +104,83 @@ export const ExamSummaryAttendanceView: React.FC<ExamSummaryAttendanceViewProps>
     return classrooms;
   }, [classrooms, selectedClassId, currentSession]);
 
+  // Kết quả học sinh nộp về Kho đề trực tuyến (Google Sheet) — tải theo yêu cầu
+  const [storeSubs, setStoreSubs] = useState<StudentSubmission[]>([]);
+  const [storeLoadStatus, setStoreLoadStatus] = useState<string | null>(null);
+  const [isLoadingStoreSubs, setIsLoadingStoreSubs] = useState(false);
+
+  const handleLoadStoreSubmissions = async () => {
+    if (!currentSession?.storeExamId) return;
+    soundEffects.playClick();
+    const cfg = getExamStoreConfig();
+    setIsLoadingStoreSubs(true);
+    setStoreLoadStatus('Đang tải kết quả từ Kho đề (Google Sheet)...');
+    const rows = await listStoreSubmissions(cfg, currentSession.storeExamId);
+    setIsLoadingStoreSubs(false);
+    if (!rows) {
+      setStoreLoadStatus('Không tải được kết quả từ Kho. Kiểm tra lại URL Web App và Mã bảo mật trong mục Cài đặt.');
+      soundEffects.playWarning();
+      return;
+    }
+    // Khử trùng: bài nộp trên chính máy này đã có trong danh sách realtime
+    // (khớp theo submissionId trong detail, hoặc họ tên + thời điểm nộp).
+    const localIds = new Set(submissions.map((s) => s.id));
+    const localKeys = new Set(
+      submissions.map((s) => `${s.studentName.trim().toLowerCase()}|${s.submittedAt}`)
+    );
+    const seenStoreKeys = new Set<string>();
+    const converted: StudentSubmission[] = [];
+    rows.forEach((r, idx) => {
+      const d = (r.detail || {}) as Record<string, any>;
+      const storeKey = `${r.studentName.trim().toLowerCase()}|${r.timestamp}`;
+      if (seenStoreKeys.has(storeKey)) return;
+      seenStoreKeys.add(storeKey);
+      if (d.submissionId && localIds.has(String(d.submissionId))) return;
+      const parsedTime = new Date(r.timestamp);
+      const displayTime = isNaN(parsedTime.getTime()) ? r.timestamp : parsedTime.toLocaleString('vi-VN');
+      if (localKeys.has(`${r.studentName.trim().toLowerCase()}|${displayTime}`)) return;
+      converted.push({
+        id: 'store-' + currentSession.storeExamId + '-' + idx,
+        sessionId: currentSession.id,
+        studentName: r.studentName,
+        studentInfo: String(d.studentInfo || r.className || ''),
+        score: r.score,
+        totalPoints: r.totalPoints,
+        correctAnswersCount: Number(d.correctAnswersCount ?? 0),
+        wrongAnswersCount: d.wrongAnswersCount != null ? Number(d.wrongAnswersCount) : undefined,
+        unansweredCount: d.unansweredCount != null ? Number(d.unansweredCount) : undefined,
+        totalQuestions: Number(d.totalQuestions ?? currentSession.questionCount ?? 0),
+        submittedAt: displayTime,
+        durationSeconds: Number(d.durationSeconds ?? 0),
+        streakMax: 0,
+        answers: (d.answers as Record<string, any>) || {},
+        autoGraded: true,
+        attemptNumber: d.attemptNumber != null ? Number(d.attemptNumber) : undefined,
+        isDisqualified: !!d.isDisqualified,
+      });
+    });
+    setStoreSubs((prev) => {
+      const prevIds = new Set(prev.map((s) => s.id));
+      return [...converted.filter((s) => !prevIds.has(s.id)), ...prev];
+    });
+    setStoreLoadStatus(
+      converted.length > 0
+        ? `✓ Đã tải thêm ${converted.length} kết quả từ Kho đề (Google Sheet).`
+        : 'Đã đồng bộ với Kho — chưa có kết quả mới nào từ học sinh thi trên máy khác.'
+    );
+    soundEffects.playCorrect();
+  };
+
   // Combine roster students and identify submissions for this exam session
   const examSubmissions = useMemo(() => {
     if (!currentSession) return [];
-    return submissions.filter(sub => sub.sessionId === currentSession.id || sub.sessionId === currentSession.quizId);
-  }, [submissions, currentSession]);
+    const local = submissions.filter(sub => sub.sessionId === currentSession.id || sub.sessionId === currentSession.quizId);
+    const localKeys = new Set(local.map(s => `${s.studentName.trim().toLowerCase()}|${s.submittedAt}`));
+    const fromStore = storeSubs.filter(
+      s => s.sessionId === currentSession.id && !localKeys.has(`${s.studentName.trim().toLowerCase()}|${s.submittedAt}`)
+    );
+    return [...fromStore, ...local];
+  }, [submissions, currentSession, storeSubs]);
 
   // Build unified student attendance list (Roster + Walk-in Submissions)
   interface UnifiedStudentRow {
@@ -497,7 +570,26 @@ ${shareLink}
               <Share2 className="w-4 h-4 text-teal-700" />
               <span>Link phòng thi</span>
             </button>
+
+            {currentSession.storeExamId && isExamStoreTeacherReady() && (
+              <button
+                onClick={handleLoadStoreSubmissions}
+                disabled={isLoadingStoreSubs}
+                className="btn-3d btn-3d-teal px-3.5 py-2 text-xs rounded-xl font-bold flex items-center gap-1.5 cursor-pointer text-white"
+                title="Tải kết quả học sinh đã nộp về Kho đề (Google Sheet) — gồm cả bài làm trên máy khác"
+              >
+                <Download className="w-4 h-4" />
+                <span>{isLoadingStoreSubs ? 'Đang tải...' : 'Tải kết quả từ Kho'}</span>
+              </button>
+            )}
           </div>
+        </div>
+      )}
+
+      {storeLoadStatus && currentSession?.storeExamId && (
+        <div className="p-3 bg-teal-50 border border-teal-300 text-teal-900 rounded-xl text-xs font-semibold flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 shrink-0 text-teal-600" />
+          <span>{storeLoadStatus}</span>
         </div>
       )}
 

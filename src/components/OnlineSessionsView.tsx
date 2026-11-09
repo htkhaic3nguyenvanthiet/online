@@ -39,8 +39,10 @@ import {
 } from 'lucide-react';
 import { ExamSession, Quiz, AntiCheatConfig, StudentSubmission, Classroom, Question } from '../types/quiz';
 import { soundEffects } from '../utils/soundEffects';
-import { getStudentExamShareUrl, getStudentExamEmbeddedShareUrl } from '../utils/urlHelper';
+import { getStudentExamShareUrl, getStudentExamEmbeddedShareUrl, getStudentExamStoreShareUrl } from '../utils/urlHelper';
 import { cloudStorageService } from '../services/cloudStorageService';
+import { getExamStoreConfig, isExamStoreTeacherReady, publishExamToStore } from '../services/examStoreService';
+import QRCode from 'qrcode';
 
 interface OnlineSessionsViewProps {
   sessions: ExamSession[];
@@ -79,19 +81,44 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [activeQrModal, setActiveQrModal] = useState<ExamSession | null>(null);
 
-  // Link thi chứa sẵn toàn bộ đề (dùng cho modal QR) — học sinh quét/mở link
-  // là vào đúng đề trên mọi thiết bị, không phụ thuộc máy chủ.
+  // Link thi cho modal chia sẻ. ƯU TIÊN Kho đề trực tuyến: link rút gọn chỉ
+  // mang mã đề + mã QR THẬT quét được. Chưa có Kho thì dùng link chứa sẵn
+  // toàn bộ đề (#d=...) như trước — học sinh mở đúng đề trên mọi thiết bị.
   const [qrShareUrl, setQrShareUrl] = useState<string>('');
+  const [qrImageUrl, setQrImageUrl] = useState<string>('');
+  const [qrIsStoreLink, setQrIsStoreLink] = useState(false);
   useEffect(() => {
     if (!activeQrModal) {
       setQrShareUrl('');
+      setQrImageUrl('');
+      setQrIsStoreLink(false);
       return;
     }
     let cancelled = false;
+    setQrImageUrl('');
     const linkedQuiz = quizzes.find((q) => q.id === activeQrModal.quizId);
     const questions = (activeQrModal.questions && activeQrModal.questions.length > 0)
       ? activeQrModal.questions
       : (linkedQuiz?.questions || []);
+
+    const storeUrl = activeQrModal.storeUrl || getExamStoreConfig().storeUrl;
+    if (activeQrModal.storeExamId && storeUrl) {
+      const shortUrl = getStudentExamStoreShareUrl(activeQrModal.storeExamId, storeUrl);
+      setQrShareUrl(shortUrl);
+      setQrIsStoreLink(true);
+      QRCode.toDataURL(shortUrl, { width: 576, margin: 2, errorCorrectionLevel: 'M' })
+        .then((dataUrl) => {
+          if (!cancelled) setQrImageUrl(dataUrl);
+        })
+        .catch(() => {
+          if (!cancelled) setQrImageUrl('');
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setQrIsStoreLink(false);
     getStudentExamEmbeddedShareUrl(activeQrModal, linkedQuiz, questions).then((url) => {
       if (!cancelled) setQrShareUrl(url);
     });
@@ -163,7 +190,25 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
       questions
     }).catch(() => {});
 
-    // Link mặc định gửi học sinh: link chứa sẵn toàn bộ đề thi trong chính URL
+    // ƯU TIÊN Kho đề: đăng lại đúng mã đề (làm mới nội dung nếu đề vừa sửa)
+    // rồi dùng LINK RÚT GỌN. Chưa có Kho thì dùng link chứa sẵn đề như trước.
+    const storeCfg = getExamStoreConfig();
+    const storeUrl = session.storeUrl || storeCfg.storeUrl;
+    if (session.storeExamId && storeUrl && isExamStoreTeacherReady(storeCfg)) {
+      await publishExamToStore(storeCfg, {
+        examId: session.storeExamId,
+        session: { ...session, questions },
+        quiz: linkedQuiz,
+        questions,
+      }).catch(() => null);
+      const shortLink = getStudentExamStoreShareUrl(session.storeExamId, storeUrl);
+      const fullText = getSessionShareText(session, shortLink);
+      navigator.clipboard?.writeText(fullText);
+      setCopiedId(session.id);
+      setTimeout(() => setCopiedId(null), 2500);
+      return;
+    }
+
     const shareLink = await getStudentExamEmbeddedShareUrl(session, linkedQuiz, questions);
     const fullText = getSessionShareText(session, shareLink);
     navigator.clipboard?.writeText(fullText);
@@ -253,8 +298,26 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
       }
     };
 
-    // Link chia sẻ của phiên mới = link chứa sẵn toàn bộ đề thi
-    created.shareUrl = await getStudentExamEmbeddedShareUrl(created, chosenQuiz, created.questions || []);
+    // ƯU TIÊN Kho đề trực tuyến: đăng đề lên Kho -> link rút gọn + QR thật.
+    // Chưa có Kho / đăng thất bại -> link chứa sẵn toàn bộ đề thi như trước.
+    const storeCfg = getExamStoreConfig();
+    let publishedToStore = false;
+    if (isExamStoreTeacherReady(storeCfg)) {
+      const published = await publishExamToStore(storeCfg, {
+        session: created,
+        quiz: chosenQuiz,
+        questions: created.questions || [],
+      }).catch(() => null);
+      if (published) {
+        created.storeExamId = published.examId;
+        created.storeUrl = storeCfg.storeUrl;
+        created.shareUrl = getStudentExamStoreShareUrl(published.examId, storeCfg.storeUrl);
+        publishedToStore = true;
+      }
+    }
+    if (!publishedToStore) {
+      created.shareUrl = await getStudentExamEmbeddedShareUrl(created, chosenQuiz, created.questions || []);
+    }
 
     onAddNewSession?.(created);
     cloudStorageService.publishExamDirectly({
@@ -2071,8 +2134,17 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
 
             <div className="p-4 bg-slate-50 rounded-2xl border-2 border-dashed border-teal-300 inline-block">
               <div className="w-48 h-48 bg-white border border-slate-300 p-2 flex flex-col items-center justify-center rounded-xl shadow-inner">
-                <QrCode className="w-36 h-36 text-slate-800" />
-                <span className="text-[10px] font-mono text-slate-500 font-bold mt-1">ID: {activeQrModal.id}</span>
+                {qrImageUrl ? (
+                  <>
+                    <img src={qrImageUrl} alt="Mã QR vào phòng thi" className="w-40 h-40" />
+                    <span className="text-[10px] font-mono text-slate-500 font-bold mt-1">Mã đề: {activeQrModal.storeExamId}</span>
+                  </>
+                ) : (
+                  <>
+                    <QrCode className="w-36 h-36 text-slate-800" />
+                    <span className="text-[10px] font-mono text-slate-500 font-bold mt-1">ID: {activeQrModal.id}</span>
+                  </>
+                )}
               </div>
             </div>
 
@@ -2080,11 +2152,15 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
               {qrShareUrl || getStudentExamShareUrl(activeQrModal.id)}
             </div>
 
-            {qrShareUrl.length > 30000 && (
-              <div className="p-2.5 bg-amber-50 border border-amber-300 rounded-xl text-amber-800 text-[11px] font-semibold text-left">
-                ⚠ Đề này có hình ảnh/công thức nên link rất dài ({qrShareUrl.length.toLocaleString('vi-VN')} ký tự) và KHÔNG tạo được mã QR quét được. Thầy hãy dùng nút “Sao chép Link” rồi gửi link cho học sinh qua Zalo/LMS — link dài vẫn mở đúng đề, không bị cắt ngắn.
+            {qrIsStoreLink ? (
+              <div className="p-2.5 bg-emerald-50 border border-emerald-300 rounded-xl text-emerald-800 text-[11px] font-semibold text-left">
+                ✓ Đề đã đăng lên Kho đề trực tuyến: link rút gọn có mã QR quét được ở trên. Học sinh quét mã hoặc mở link là vào đúng đề; điểm nộp bài tự về Google Sheet của Thầy/Cô.
               </div>
-            )}
+            ) : qrShareUrl.length > 30000 ? (
+              <div className="p-2.5 bg-amber-50 border border-amber-300 rounded-xl text-amber-800 text-[11px] font-semibold text-left">
+                ⚠ Đề này có hình ảnh/công thức nên link rất dài ({qrShareUrl.length.toLocaleString('vi-VN')} ký tự) và KHÔNG tạo được mã QR quét được. Thầy hãy dùng nút “Sao chép Link” rồi gửi link cho học sinh qua Zalo/LMS — link dài vẫn mở đúng đề, không bị cắt ngắn. Muốn có link ngắn + QR thật: kết nối "Kho đề trực tuyến (Google)" trong mục Cài đặt & Tài khoản.
+              </div>
+            ) : null}
 
             <div className="flex gap-2">
               <button

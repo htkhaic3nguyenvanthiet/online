@@ -16,10 +16,12 @@ import {
   Sparkles,
   ArrowRight,
   ExternalLink,
-  Laptop
+  Laptop,
+  Database
 } from 'lucide-react';
 import { Quiz, Classroom, ExamSession, StudentSubmission } from '../types/quiz';
 import { cloudStorageService } from '../services/cloudStorageService';
+import { getExamStoreConfig, saveExamStoreConfig, pingExamStore } from '../services/examStoreService';
 import { soundEffects } from '../utils/soundEffects';
 
 interface CloudDriveModalProps {
@@ -66,6 +68,46 @@ export const CloudDriveModal: React.FC<CloudDriveModalProps> = ({
   // Edit custom key
   const [isEditingKey, setIsEditingKey] = useState(false);
   const [customKeyInput, setCustomKeyInput] = useState(currentSyncKey);
+
+  // Kho đề trực tuyến (Google Apps Script) — URL Web App + Mã bảo mật
+  const [storeUrlInput, setStoreUrlInput] = useState(() => getExamStoreConfig().storeUrl);
+  const [storeTokenInput, setStoreTokenInput] = useState(() => getExamStoreConfig().teacherToken);
+  const [storeStatus, setStoreStatus] = useState<string | null>(null);
+  const [storeOk, setStoreOk] = useState<boolean | null>(null);
+  const [isPingingStore, setIsPingingStore] = useState(false);
+
+  const handleSaveStoreConfig = () => {
+    soundEffects.playClick();
+    saveExamStoreConfig({ storeUrl: storeUrlInput, teacherToken: storeTokenInput });
+    setStoreOk(null);
+    setStoreStatus('Đã lưu cấu hình Kho đề. Hãy bấm "Kiểm tra kết nối" để chắc chắn Kho đang hoạt động.');
+    soundEffects.playCorrect();
+  };
+
+  const handlePingStore = async () => {
+    soundEffects.playClick();
+    const cfg = { storeUrl: storeUrlInput.trim(), teacherToken: storeTokenInput.trim() };
+    if (!cfg.storeUrl) {
+      setStoreOk(false);
+      setStoreStatus('Chưa nhập URL Web App của Kho. Hãy triển khai Apps Script theo hướng dẫn rồi dán URL vào đây.');
+      soundEffects.playWarning();
+      return;
+    }
+    setIsPingingStore(true);
+    setStoreStatus('Đang kiểm tra kết nối tới Kho đề...');
+    const ok = await pingExamStore(cfg);
+    setIsPingingStore(false);
+    if (ok) {
+      saveExamStoreConfig(cfg);
+      setStoreOk(true);
+      setStoreStatus('✓ Kết nối Kho đề thành công! Từ giờ giao đề sẽ có link rút gọn + mã QR thật, và điểm của học sinh sẽ về Google Sheet.');
+      soundEffects.playCorrect();
+    } else {
+      setStoreOk(false);
+      setStoreStatus('Không kết nối được Kho. Kiểm tra lại: URL Web App đã đúng chưa, bản triển khai Apps Script đã chọn "Ai có liên kết đều truy cập được" chưa.');
+      soundEffects.playWarning();
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -350,6 +392,80 @@ export const CloudDriveModal: React.FC<CloudDriveModalProps> = ({
               <span>{syncStatus}</span>
             </div>
           )}
+
+          {/* SECTION 2.5: KHO ĐỀ TRỰC TUYẾN (GOOGLE APPS SCRIPT) */}
+          <div className="p-4 bg-gradient-to-r from-teal-50 to-emerald-50 border-2 border-teal-300 rounded-2xl space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-slate-900 font-extrabold text-sm">
+                <Database className="w-4 h-4 text-teal-600" />
+                <span>Kho đề trực tuyến (Google)</span>
+              </div>
+              <span className="text-[10px] bg-teal-600 text-white font-black px-2 py-0.5 rounded-full uppercase">
+                Link ngắn + QR thật
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-600 font-normal leading-relaxed">
+              Đề thi lưu trong <strong>Google Drive của chính Thầy/Cô</strong> (qua Apps Script). Khi đã kết nối,
+              link giao đề rút gọn chỉ còn một mã ngắn — quét QR vào thi ngay, và điểm học sinh nộp bài
+              tự động chảy về <strong>Google Sheet</strong>. Chưa kết nối thì hệ thống vẫn dùng link chứa sẵn đề như trước.
+            </p>
+
+            <div className="space-y-2">
+              <label className="block">
+                <span className="block text-[11px] font-bold text-slate-700 mb-1">URL Web App của Kho (Apps Script):</span>
+                <input
+                  type="text"
+                  value={storeUrlInput}
+                  onChange={(e) => setStoreUrlInput(e.target.value)}
+                  placeholder="https://script.google.com/macros/s/AKfyc.../exec"
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-mono text-[11px]"
+                />
+              </label>
+              <label className="block">
+                <span className="block text-[11px] font-bold text-slate-700 mb-1">Mã bảo mật (chỉ giáo viên — lấy từ Nhật ký khi chạy setup):</span>
+                <input
+                  type="password"
+                  value={storeTokenInput}
+                  onChange={(e) => setStoreTokenInput(e.target.value)}
+                  placeholder="Dán Mã bảo mật của Thầy/Cô vào đây (không chia sẻ cho học sinh)"
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-mono text-[11px]"
+                  autoComplete="off"
+                />
+              </label>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={handlePingStore}
+                disabled={isPingingStore}
+                className="btn-3d btn-3d-teal px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 font-bold cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isPingingStore ? 'animate-spin' : ''}`} />
+                <span>{isPingingStore ? 'Đang kiểm tra...' : 'Kiểm tra kết nối'}</span>
+              </button>
+              <button
+                onClick={handleSaveStoreConfig}
+                className="btn-3d btn-3d-slate px-4 py-2 rounded-xl text-xs font-bold cursor-pointer"
+              >
+                Lưu cấu hình
+              </button>
+            </div>
+
+            {storeStatus && (
+              <div
+                className={`p-3 border rounded-xl text-[11px] flex items-start gap-2 ${
+                  storeOk === true
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+                    : storeOk === false
+                    ? 'bg-rose-50 border-rose-300 text-rose-900'
+                    : 'bg-white border-slate-300 text-slate-700'
+                }`}
+              >
+                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{storeStatus}</span>
+              </div>
+            )}
+          </div>
 
           {/* SECTION 3: ĐỒNG BỘ LÊN TÀI KHOẢN GOOGLE DRIVE */}
           <div className="border border-blue-200 bg-blue-50/50 rounded-2xl p-4 space-y-3">
