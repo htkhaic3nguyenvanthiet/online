@@ -1075,10 +1075,10 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
           </div>
         </div>
 
-        {/* Question Statement Box */}
-        <div className="my-2 bg-[#052b2d]/70 backdrop-blur-xs border border-teal-300/30 rounded-2xl p-4 text-white shadow-lg text-center shrink-0">
+        {/* Question Statement Box (Wider, Spacious 3D Frame) */}
+        <div className="my-1.5 bg-gradient-to-r from-[#063337] via-[#09474d] to-[#0c5860] border-2 border-teal-300/50 rounded-2xl p-3.5 sm:p-4 text-white shadow-[0_6px_0_0_#021b1d,0_10px_20px_rgba(0,0,0,0.4)] text-center shrink-0">
           <div className="text-xs font-bold text-teal-200 uppercase tracking-wider mb-1 flex items-center justify-center gap-2">
-            <span className="bg-teal-800/60 px-2 py-0.5 rounded-md font-mono text-[10px] text-teal-100">
+            <span className="bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 font-black text-[11px] px-3 py-0.5 rounded-full shadow-[0_2px_0_0_#b45309]">
               {currentQ.partType === 'part2_true_false'
                 ? 'PHẦN II: TRẮC NGHIỆM ĐÚNG / SAI'
                 : currentQ.partType === 'part3_short_answer'
@@ -1087,15 +1087,15 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                 ? 'PHẦN IV: CÂU HỎI TỰ LUẬN'
                 : 'PHẦN I: TRẮC NGHIỆM 4 PHƯƠNG ÁN'}
             </span>
-            <span>Câu {currentIndex + 1} / {questions.length}</span>
+            <span className="font-mono text-teal-100 font-extrabold text-xs">Câu {currentIndex + 1} / {questions.length}</span>
             {isCurrentAnswered && (
-              <span className="bg-emerald-400 text-emerald-950 text-[10px] font-black px-2 py-0.5 rounded-full">
+              <span className="bg-emerald-400 text-emerald-950 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs">
                 ✓ Đã hoàn thành
               </span>
             )}
           </div>
           <h2
-            className="font-bold text-slate-50 leading-relaxed max-h-28 overflow-y-auto"
+            className="font-black text-slate-50 leading-relaxed max-h-32 sm:max-h-36 overflow-y-auto px-2"
             style={{ fontSize: `${17 + fontSizeOffset}px` }}
           >
             {currentQ.content}
@@ -1110,7 +1110,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
               return (
                 <div
                   key={si.key}
-                  className="bg-[#052b2d]/60 backdrop-blur-xs border border-teal-300/20 rounded-2xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shadow-md"
+                  className="bg-[#063337]/70 border-2 border-teal-300/30 rounded-2xl p-2.5 sm:p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shadow-[0_4px_0_0_#021b1d]"
                 >
                   <div className="flex-1 text-left">
                     <span className="font-black text-amber-300 text-sm mr-2">{si.key})</span>
@@ -1125,9 +1125,9 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                     <button
                       type="button"
                       onClick={() => handleToggleSubItem(si.key, true)}
-                      className={`px-4 py-1.5 rounded-xl font-black text-xs cursor-pointer transition-all ${
+                      className={`btn-3d px-4 py-1.5 rounded-xl font-black text-xs cursor-pointer transition-all ${
                         selectedValue === true
-                          ? 'btn-3d btn-3d-emerald ring-2 ring-white scale-105 shadow-lg'
+                          ? 'btn-3d-emerald ring-2 ring-white scale-105 shadow-lg'
                           : 'bg-white/20 hover:bg-white/30 text-white'
                       }`}
                     >
@@ -1136,9 +1136,9 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                     <button
                       type="button"
                       onClick={() => handleToggleSubItem(si.key, false)}
-                      className={`px-4 py-1.5 rounded-xl font-black text-xs cursor-pointer transition-all ${
+                      className={`btn-3d px-4 py-1.5 rounded-xl font-black text-xs cursor-pointer transition-all ${
                         selectedValue === false
-                          ? 'bg-rose-600 hover:bg-rose-500 text-white ring-2 ring-white scale-105 shadow-lg'
+                          ? 'btn-3d-pink ring-2 ring-white scale-105 shadow-lg'
                           : 'bg-white/20 hover:bg-white/30 text-white'
                       }`}
                     >
@@ -1153,9 +1153,9 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
 
         {/* 2. PHẦN III: TRẢ LỜI NGẮN (CHỈ CẦN Ô NHẬP ĐÁP ÁN ĐỂ HỌC SINH GHI SỐ VÀO) */}
         {currentQ.partType === 'part3_short_answer' && (
-          <div className="bg-[#052b2d]/70 backdrop-blur-xs border border-teal-300/30 rounded-2xl p-6 text-center max-w-md mx-auto w-full my-2 shadow-xl flex-1 flex flex-col justify-center items-center gap-3">
-            <span className="text-xs text-teal-200 font-bold uppercase tracking-wider">
-              Nhập câu trả lời ngắn:
+          <div className="bg-gradient-to-b from-[#063337] to-[#042023] border-2 border-amber-400/50 rounded-2xl p-5 text-center max-w-md mx-auto w-full my-1 shadow-[0_6px_0_0_#78350f] flex-1 flex flex-col justify-center items-center gap-3">
+            <span className="text-xs text-amber-300 font-bold uppercase tracking-wider">
+              Nhập câu trả lời ngắn (Tối đa 4 chữ số):
             </span>
             <input
               type="text"
@@ -1164,14 +1164,14 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
               onChange={(e) => handleShortAnswerChange(e.target.value)}
               placeholder="Nhập đáp án..."
               autoFocus
-              className="w-56 text-center text-3xl font-black font-mono tracking-widest bg-white text-slate-900 border-4 border-amber-300 rounded-2xl py-2.5 px-4 shadow-inner focus:outline-none focus:ring-4 focus:ring-teal-300 transition-all placeholder:text-slate-300 placeholder:text-lg placeholder:font-normal"
+              className="w-56 text-center text-3xl font-black font-mono tracking-widest bg-white text-slate-900 border-4 border-amber-400 rounded-2xl py-2 px-4 shadow-[0_4px_0_0_#d97706] focus:outline-none focus:ring-4 focus:ring-teal-300 transition-all placeholder:text-slate-300 placeholder:text-lg placeholder:font-normal"
             />
           </div>
         )}
 
         {/* 3. PHẦN IV: CÂU HỎI TỰ LUẬN (Học sinh trình bày lời giải / câu trả lời chi tiết) */}
         {currentQ.partType === 'part4_essay' && (
-          <div className="bg-[#052b2d]/70 backdrop-blur-xs border border-teal-300/30 rounded-2xl p-4 text-left w-full my-2 shadow-xl flex-1 flex flex-col justify-between gap-3 overflow-y-auto">
+          <div className="bg-gradient-to-b from-[#063337] to-[#042023] border-2 border-teal-300/40 rounded-2xl p-4 text-left w-full my-1 shadow-lg flex-1 flex flex-col justify-between gap-2.5 overflow-y-auto">
             <div className="flex items-center justify-between">
               <span className="text-xs text-amber-300 font-bold uppercase tracking-wider">
                 ✍ Bài làm tự luận của học sinh:
@@ -1181,7 +1181,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
               </span>
             </div>
             <textarea
-              rows={5}
+              rows={4}
               value={userAnswers[currentQ.id] || ''}
               onChange={(e) => {
                 soundEffects.playClick();
@@ -1191,14 +1191,14 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                 });
               }}
               placeholder="Nhập câu trả lời hoặc trình bày bài làm tự luận của bạn vào đây..."
-              className="w-full flex-1 p-3.5 bg-white text-slate-900 font-medium rounded-xl border-2 border-amber-300/80 focus:outline-none focus:ring-4 focus:ring-teal-300 shadow-inner text-sm leading-relaxed resize-none"
+              className="w-full flex-1 p-3 bg-white text-slate-900 font-medium rounded-xl border-2 border-amber-400/80 focus:outline-none focus:ring-4 focus:ring-teal-300 shadow-inner text-sm leading-relaxed resize-none"
             />
           </div>
         )}
 
-        {/* 4. PHẦN I: TRẮC NGHIỆM 4 PHƯƠNG ÁN LỰA CHỌN (A, B, C, D) */}
+        {/* 4. PHẦN I: TRẮC NGHIỆM 4 PHƯƠNG ÁN LỰA CHỌN (MỖI ĐÁP ÁN 1 MÀU 3D ĐỘC LẬP) */}
         {(!currentQ.partType || currentQ.partType === 'part1_choice') && currentQ.options && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 my-1 flex-1 overflow-y-auto pr-1 items-stretch">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 my-1 flex-1 overflow-y-auto pr-1 items-stretch">
             {currentQ.options.map((opt) => {
               const isSelected = userAnswers[currentQ.id] === opt.key;
               let colorClass = 'btn-3d-blue';
@@ -1210,22 +1210,22 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                 <button
                   key={opt.key}
                   onClick={() => handleSelectOption(opt.key)}
-                  className={`btn-3d ${colorClass} p-4 rounded-2xl flex flex-col items-center justify-center text-center cursor-pointer min-h-[110px] relative transition-all ${
-                    isSelected ? 'ring-4 ring-white scale-102 shadow-2xl brightness-115' : 'opacity-95'
+                  className={`btn-3d ${colorClass} p-3 sm:p-4 rounded-2xl flex flex-col items-center justify-center text-center cursor-pointer min-h-[75px] sm:min-h-[85px] relative transition-all ${
+                    isSelected ? 'ring-4 ring-white scale-[1.02] shadow-2xl brightness-125' : 'opacity-95'
                   }`}
                 >
-                  <div className="w-9 h-9 rounded-full bg-white/25 flex items-center justify-center font-black text-base mb-1.5 shadow-inner">
+                  <div className="w-8 h-8 rounded-full bg-white/25 flex items-center justify-center font-black text-sm mb-1 shadow-inner border border-white/30">
                     {opt.key}
                   </div>
                   <span
                     className="font-extrabold text-white leading-snug drop-shadow-xs"
-                    style={{ fontSize: `${14 + fontSizeOffset}px` }}
+                    style={{ fontSize: `${13.5 + fontSizeOffset}px` }}
                   >
                     {opt.text}
                   </span>
 
                   {isSelected && (
-                    <div className="absolute top-2 right-2 bg-white text-emerald-700 w-5 h-5 rounded-full flex items-center justify-center font-bold text-xs shadow-md">
+                    <div className="absolute top-2 right-2 bg-white text-slate-900 w-5 h-5 rounded-full flex items-center justify-center font-black text-xs shadow-md">
                       ✓
                     </div>
                   )}
