@@ -113,11 +113,14 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
   const [attemptNumber, setAttemptNumber] = useState(1);
 
   const baseTeacherQuestions = useMemo(() => {
+    if (session?.questions && session.questions.length > 0) {
+      return session.questions;
+    }
     if (customQuestions && customQuestions.length > 0) {
       return customQuestions;
     }
     return sampleQuestions;
-  }, [customQuestions]);
+  }, [session, customQuestions]);
 
   const questions = useMemo(() => {
     if (!baseTeacherQuestions || baseTeacherQuestions.length === 0) return [];
@@ -504,6 +507,9 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
     let wrongCount = 0;
     let unansweredCount = 0;
 
+    const resolvedPart4PerQ = scoringConfig?.part4PointPerQuestion ?? 0.5;
+    const subPts = scoringConfig?.part2SubItemPoints || { 1: 0.1, 2: 0.25, 3: 0.5, 4: 1.0 };
+
     questions.forEach((q) => {
       const ans = answers[q.id];
       if (q.partType === 'part2_true_false') {
@@ -517,18 +523,13 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
               subCorrect++;
             }
           });
-          // Circular 7991 grading rule:
-          // 1 correct item: 10%
-          // 2 correct items: 25%
-          // 3 correct items: 50%
-          // 4 correct items: 100%
-          let qRatio = 0;
-          if (subCorrect === 1) qRatio = 0.1;
-          else if (subCorrect === 2) qRatio = 0.25;
-          else if (subCorrect === 3) qRatio = 0.5;
-          else if (subCorrect === 4) qRatio = 1.0;
+          let earnedPart2 = 0;
+          if (subCorrect === 1) earnedPart2 = subPts[1];
+          else if (subCorrect === 2) earnedPart2 = subPts[2];
+          else if (subCorrect === 3) earnedPart2 = subPts[3];
+          else if (subCorrect === 4) earnedPart2 = subPts[4];
 
-          earnedPoints += qRatio * resolvedPart2PerQ;
+          earnedPoints += earnedPart2;
           if (subCorrect === 4) {
             correctCount++;
           } else if (subCorrect > 0) {
@@ -551,6 +552,14 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
           correctCount++;
         } else {
           wrongCount++;
+        }
+      } else if (q.partType === 'part4_essay') {
+        totalMaxPoints += resolvedPart4PerQ;
+        if (!ans || !ans.trim()) {
+          unansweredCount++;
+        } else {
+          earnedPoints += resolvedPart4PerQ;
+          correctCount++;
         }
       } else {
         // Part 1 choice

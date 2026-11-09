@@ -81,8 +81,10 @@ export interface ExamScoringConfig {
   durationMinutes: number; // Thời gian làm bài
   // Điểm số mỗi câu ở từng phần:
   part1PointPerQuestion: number; // Điểm mỗi câu Phần I (Mặc định 0.25đ)
-  part2PointPerQuestion: number; // Điểm tối đa mỗi câu Phần II (Mặc định 1.0đ theo chuẩn 0.1-0.25-0.5-1.0)
-  part3PointPerQuestion: number; // Điểm mỗi câu Phần III (Mặc định 0.25đ hoặc tùy chỉnh)
+  part2PointPerQuestion: number; // Điểm tối đa mỗi câu Phần II (Mặc định 1.0đ)
+  part2SubItemPoints?: { 1: number; 2: number; 3: number; 4: number }; // Thang điểm lũy tiến 1, 2, 3, 4 ý đúng ở Phần II
+  part3PointPerQuestion: number; // Điểm mỗi câu Phần III (Mặc định 0.25đ)
+  part4PointPerQuestion?: number; // Điểm mỗi câu Tự luận Phần IV (Mặc định 0.5đ / 1.0đ)
   // Tùy chọn xem đáp án & điều kiện đủ điểm
   allowViewAnswerKey: boolean; // Cho phép xem đáp án sau khi nộp (true / false)
   viewAnswerMinScore: number; // Đủ bao nhiêu điểm mới mở đáp án đúng (Mặc định: 4.0 điểm)
@@ -106,6 +108,7 @@ export interface ExamSession {
   maxSlots: number; // 500+ slots
   isArenaMode?: boolean;
   questionCount?: number;
+  questions?: Question[]; // Exact 100% teacher-authored question collection
   antiCheatConfig?: AntiCheatConfig;
   scoringConfig?: ExamScoringConfig;
 }

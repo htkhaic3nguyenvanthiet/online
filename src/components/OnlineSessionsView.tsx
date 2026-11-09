@@ -132,6 +132,7 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
       maxSlots: 500,
       isArenaMode: true,
       questionCount: totalQCount,
+      questions: chosenQuiz?.questions,
       scoringConfig: {
         totalPoints: 10.0,
         durationMinutes: newDuration,
@@ -544,30 +545,39 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
 
       {/* MODAL: CÀI ĐẶT GIAO ĐỀ THI & QUY CHẾ ĐIỂM SỐ (WORLD-CLASS CONFIGURATION MODAL) */}
       {configModalSession && (() => {
-        const linkedQuiz = quizzes.find((q) => q.id === configModalSession.quizId || q.title === configModalSession.title);
-        const p1Count = linkedQuiz?.questions?.filter(q => q.partType === 'part1_choice' || (!q.partType && q.options && q.options.length > 0)).length || 18;
-        const p2Count = linkedQuiz?.questions?.filter(q => q.partType === 'part2_true_false').length || 4;
-        const p3Count = linkedQuiz?.questions?.filter(q => q.partType === 'part3_short_answer').length || 6;
-        const totalCount = p1Count + p2Count + p3Count;
+        const sessionQuestions = configModalSession.questions || quizzes.find((q) => q.id === configModalSession.quizId || q.title === configModalSession.title)?.questions;
+        const p1Count = sessionQuestions?.filter(q => !q.partType || q.partType === 'part1_choice').length ?? 18;
+        const p2Count = sessionQuestions?.filter(q => q.partType === 'part2_true_false').length ?? 4;
+        const p3Count = sessionQuestions?.filter(q => q.partType === 'part3_short_answer').length ?? 6;
+        const p4Count = sessionQuestions?.filter(q => q.partType === 'part4_essay').length ?? 0;
+        const totalCount = p1Count + p2Count + p3Count + p4Count;
 
         const sc = configModalSession.scoringConfig || {
           totalPoints: 10.0,
           durationMinutes: configModalSession.durationMinutes || 50,
           part1PointPerQuestion: 0.25,
           part2PointPerQuestion: 1.0,
+          part2SubItemPoints: { 1: 0.1, 2: 0.25, 3: 0.5, 4: 1.0 },
           part3PointPerQuestion: 0.25,
+          part4PointPerQuestion: 0.5,
           allowViewAnswerKey: true,
           viewAnswerMinScore: 4.0,
           allowAiTutorExplanation: true,
         };
 
+        const subPts = sc.part2SubItemPoints || { 1: 0.1, 2: 0.25, 3: 0.5, 4: 1.0 };
+        const p4PerQ = sc.part4PointPerQuestion ?? 0.5;
+
         const p1Nominal = +(p1Count * sc.part1PointPerQuestion).toFixed(2);
         const p2Nominal = +(p2Count * sc.part2PointPerQuestion).toFixed(2);
         const p3Nominal = +(p3Count * sc.part3PointPerQuestion).toFixed(2);
-        const totalNominal = +(p1Nominal + p2Nominal + p3Nominal).toFixed(2);
+        const p4Nominal = +(p4Count * p4PerQ).toFixed(2);
+        const totalNominal = +(p1Nominal + p2Nominal + p3Nominal + p4Nominal).toFixed(2);
+
         const p1Percent = totalNominal > 0 ? Math.round((p1Nominal / totalNominal) * 100) : 45;
         const p2Percent = totalNominal > 0 ? Math.round((p2Nominal / totalNominal) * 100) : 40;
-        const p3Percent = totalNominal > 0 ? Math.max(0, 100 - p1Percent - p2Percent) : 15;
+        const p3Percent = totalNominal > 0 ? Math.round((p3Nominal / totalNominal) * 100) : 15;
+        const p4Percent = totalNominal > 0 ? Math.max(0, 100 - p1Percent - p2Percent - p3Percent) : 0;
 
         return (
           <div className="fixed inset-0 z-50 bg-slate-900/65 backdrop-blur-xs flex items-center justify-center p-4">
@@ -582,7 +592,7 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
                     <h3 className="font-black text-base text-slate-900 flex items-center gap-2">
                       <span>Thiết Lập Điểm Số & Quy Chế Thi</span>
                       <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-300">
-                        Thông tư 22
+                        Thông tư 22 BGD&ĐT
                       </span>
                     </h3>
                     <p className="text-xs text-slate-500">{configModalSession.title}</p>
@@ -662,130 +672,255 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
                         <Award className="w-5 h-5 text-teal-700" />
                         <div>
                           <span className="font-extrabold text-teal-900 text-xs">
-                            Thang điểm tối đa chuẩn hóa: 10.0 Điểm
+                            Thang điểm chuẩn hóa: 10.0 Điểm
                           </span>
                           <p className="text-[11px] text-teal-700">
-                            Áp dụng quy chế Thông tư 22 BGD&ĐT: Bất kể số lượng câu hỏi, tổng điểm luôn quy về thang điểm 10.
+                            Cấu hình số điểm chi tiết cho từng phần & từng ý câu hỏi Đúng/Sai theo chuẩn Giáo viên.
                           </p>
                         </div>
                       </div>
                       <span className="text-[10px] font-mono bg-teal-200/80 text-teal-900 px-2 py-1 rounded-md font-bold">
-                        Tổng: {totalCount} câu
+                        Đề gốc có: {totalCount} câu
                       </span>
                     </div>
 
                     {/* Section Point Distribution Inputs */}
                     <div className="space-y-3">
                       {/* Phần I */}
-                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <div className="space-y-0.5">
-                          <div className="flex items-center gap-2">
-                            <span className="w-5 h-5 rounded-md bg-blue-600 text-white font-black text-[11px] flex items-center justify-center">I</span>
-                            <span className="font-bold text-slate-800">Phần I: Trắc nghiệm 4 phương án</span>
+                      {p1Count > 0 && (
+                        <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-2">
+                              <span className="w-5 h-5 rounded-md bg-blue-600 text-white font-black text-[11px] flex items-center justify-center">I</span>
+                              <span className="font-bold text-slate-800">Phần I: Trắc nghiệm 4 phương án</span>
+                            </div>
+                            <p className="text-[11px] text-slate-500">
+                              Có {p1Count} câu hỏi • Chọn 1 đáp án đúng trong A, B, C, D
+                            </p>
                           </div>
-                          <p className="text-[11px] text-slate-500">
-                            Có {p1Count} câu hỏi • Chọn 1 đáp án đúng trong A, B, C, D
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <div className="flex items-center gap-1.5">
-                            <label className="text-[11px] font-semibold text-slate-600">Điểm/câu:</label>
-                            <input
-                              type="number"
-                              step="0.05"
-                              min="0.05"
-                              max="5"
-                              value={sc.part1PointPerQuestion}
-                              onChange={(e) => {
-                                const val = parseFloat(e.target.value) || 0.25;
-                                setConfigModalSession({
-                                  ...configModalSession,
-                                  scoringConfig: { ...sc, part1PointPerQuestion: val }
-                                });
-                              }}
-                              className="w-18 px-2 py-1 bg-white border border-slate-300 rounded-lg text-center font-bold text-xs"
-                            />
-                            <span className="text-slate-500 text-[11px]">đ</span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <div className="flex items-center gap-1.5">
+                              <label className="text-[11px] font-semibold text-slate-600">Điểm/câu:</label>
+                              <input
+                                type="number"
+                                step="0.05"
+                                min="0.05"
+                                max="5"
+                                value={sc.part1PointPerQuestion}
+                                onChange={(e) => {
+                                  const val = parseFloat(e.target.value) || 0.25;
+                                  setConfigModalSession({
+                                    ...configModalSession,
+                                    scoringConfig: { ...sc, part1PointPerQuestion: val }
+                                  });
+                                }}
+                                className="w-18 px-2 py-1 bg-white border border-slate-300 rounded-lg text-center font-bold text-xs"
+                              />
+                              <span className="text-slate-500 text-[11px]">đ</span>
+                            </div>
+                            <span className="text-[11px] font-mono bg-blue-100 text-blue-800 px-2 py-1 rounded-md font-bold">
+                              = {p1Nominal}đ ({p1Percent}%)
+                            </span>
                           </div>
-                          <span className="text-[11px] font-mono bg-blue-100 text-blue-800 px-2 py-1 rounded-md font-bold">
-                            = {p1Nominal}đ ({p1Percent}%)
-                          </span>
                         </div>
-                      </div>
+                      )}
 
-                      {/* Phần II */}
-                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <div className="space-y-0.5">
-                          <div className="flex items-center gap-2">
-                            <span className="w-5 h-5 rounded-md bg-emerald-600 text-white font-black text-[11px] flex items-center justify-center">II</span>
-                            <span className="font-bold text-slate-800">Phần II: Câu hỏi Đúng / Sai (a, b, c, d)</span>
+                      {/* Phần II - Đúng/Sai kèm Cấu hình số điểm từng ý a, b, c, d */}
+                      {p2Count > 0 && (
+                        <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-2">
+                                <span className="w-5 h-5 rounded-md bg-emerald-600 text-white font-black text-[11px] flex items-center justify-center">II</span>
+                                <span className="font-bold text-slate-800">Phần II: Trắc nghiệm Đúng / Sai (a, b, c, d)</span>
+                              </div>
+                              <p className="text-[11px] text-slate-500">
+                                Có {p2Count} câu • Tùy chỉnh số điểm thưởng ở từng số ý làm đúng (1, 2, 3, 4 ý)
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-[11px] font-mono bg-emerald-100 text-emerald-800 px-2 py-1 rounded-md font-bold">
+                                = {p2Nominal}đ ({p2Percent}%)
+                              </span>
+                            </div>
                           </div>
-                          <p className="text-[11px] text-slate-500">
-                            Có {p2Count} câu • Thang lũy tiến TT22: 1 ý=0.1đ, 2 ý=0.25đ, 3 ý=0.5đ, 4 ý=1.0đ
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <div className="flex items-center gap-1.5">
-                            <label className="text-[11px] font-semibold text-slate-600">Điểm tối đa/câu:</label>
-                            <input
-                              type="number"
-                              step="0.1"
-                              min="0.1"
-                              max="5"
-                              value={sc.part2PointPerQuestion}
-                              onChange={(e) => {
-                                const val = parseFloat(e.target.value) || 1.0;
-                                setConfigModalSession({
-                                  ...configModalSession,
-                                  scoringConfig: { ...sc, part2PointPerQuestion: val }
-                                });
-                              }}
-                              className="w-18 px-2 py-1 bg-white border border-slate-300 rounded-lg text-center font-bold text-xs"
-                            />
-                            <span className="text-slate-500 text-[11px]">đ</span>
+
+                          {/* 4 sub-item point input fields for Part II */}
+                          <div className="p-2.5 bg-white rounded-xl border border-slate-200/80 space-y-1.5">
+                            <span className="text-[11px] font-bold text-slate-700 block">
+                              ⚙ Số điểm thưởng tính cho mỗi câu Phần II theo số ý đúng:
+                            </span>
+                            <div className="grid grid-cols-4 gap-2 pt-1 text-center">
+                              <div className="p-1.5 bg-slate-50 rounded-lg border border-slate-200">
+                                <label className="block text-[10px] text-slate-600 font-bold mb-1">Đúng 1 ý:</label>
+                                <input
+                                  type="number"
+                                  step="0.05"
+                                  min="0"
+                                  value={subPts[1]}
+                                  onChange={(e) => {
+                                    const v = parseFloat(e.target.value) || 0.1;
+                                    setConfigModalSession({
+                                      ...configModalSession,
+                                      scoringConfig: {
+                                        ...sc,
+                                        part2SubItemPoints: { ...subPts, 1: v }
+                                      }
+                                    });
+                                  }}
+                                  className="w-full px-1 py-1 bg-white border border-slate-300 rounded text-center font-bold text-xs"
+                                />
+                                <span className="text-[10px] text-slate-400">điểm</span>
+                              </div>
+
+                              <div className="p-1.5 bg-slate-50 rounded-lg border border-slate-200">
+                                <label className="block text-[10px] text-slate-600 font-bold mb-1">Đúng 2 ý:</label>
+                                <input
+                                  type="number"
+                                  step="0.05"
+                                  min="0"
+                                  value={subPts[2]}
+                                  onChange={(e) => {
+                                    const v = parseFloat(e.target.value) || 0.25;
+                                    setConfigModalSession({
+                                      ...configModalSession,
+                                      scoringConfig: {
+                                        ...sc,
+                                        part2SubItemPoints: { ...subPts, 2: v }
+                                      }
+                                    });
+                                  }}
+                                  className="w-full px-1 py-1 bg-white border border-slate-300 rounded text-center font-bold text-xs"
+                                />
+                                <span className="text-[10px] text-slate-400">điểm</span>
+                              </div>
+
+                              <div className="p-1.5 bg-slate-50 rounded-lg border border-slate-200">
+                                <label className="block text-[10px] text-slate-600 font-bold mb-1">Đúng 3 ý:</label>
+                                <input
+                                  type="number"
+                                  step="0.05"
+                                  min="0"
+                                  value={subPts[3]}
+                                  onChange={(e) => {
+                                    const v = parseFloat(e.target.value) || 0.5;
+                                    setConfigModalSession({
+                                      ...configModalSession,
+                                      scoringConfig: {
+                                        ...sc,
+                                        part2SubItemPoints: { ...subPts, 3: v }
+                                      }
+                                    });
+                                  }}
+                                  className="w-full px-1 py-1 bg-white border border-slate-300 rounded text-center font-bold text-xs"
+                                />
+                                <span className="text-[10px] text-slate-400">điểm</span>
+                              </div>
+
+                              <div className="p-1.5 bg-emerald-50 rounded-lg border border-emerald-300">
+                                <label className="block text-[10px] text-emerald-900 font-extrabold mb-1">Đúng 4 ý (Tối đa):</label>
+                                <input
+                                  type="number"
+                                  step="0.05"
+                                  min="0"
+                                  value={subPts[4]}
+                                  onChange={(e) => {
+                                    const v = parseFloat(e.target.value) || 1.0;
+                                    setConfigModalSession({
+                                      ...configModalSession,
+                                      scoringConfig: {
+                                        ...sc,
+                                        part2PointPerQuestion: v,
+                                        part2SubItemPoints: { ...subPts, 4: v }
+                                      }
+                                    });
+                                  }}
+                                  className="w-full px-1 py-1 bg-white border border-emerald-400 rounded text-center font-black text-xs text-emerald-950"
+                                />
+                                <span className="text-[10px] text-emerald-700 font-bold">điểm</span>
+                              </div>
+                            </div>
                           </div>
-                          <span className="text-[11px] font-mono bg-emerald-100 text-emerald-800 px-2 py-1 rounded-md font-bold">
-                            = {p2Nominal}đ ({p2Percent}%)
-                          </span>
                         </div>
-                      </div>
+                      )}
 
                       {/* Phần III */}
-                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <div className="space-y-0.5">
-                          <div className="flex items-center gap-2">
-                            <span className="w-5 h-5 rounded-md bg-amber-600 text-white font-black text-[11px] flex items-center justify-center">III</span>
-                            <span className="font-bold text-slate-800">Phần III: Câu hỏi trả lời ngắn (Điền số)</span>
+                      {p3Count > 0 && (
+                        <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-2">
+                              <span className="w-5 h-5 rounded-md bg-amber-600 text-white font-black text-[11px] flex items-center justify-center">III</span>
+                              <span className="font-bold text-slate-800">Phần III: Câu hỏi trả lời ngắn (Điền số)</span>
+                            </div>
+                            <p className="text-[11px] text-slate-500">
+                              Có {p3Count} câu • Ô nhập tối đa 4 ký tự số
+                            </p>
                           </div>
-                          <p className="text-[11px] text-slate-500">
-                            Có {p3Count} câu • Ô nhập tối đa 4 ký tự số
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <div className="flex items-center gap-1.5">
-                            <label className="text-[11px] font-semibold text-slate-600">Điểm/câu:</label>
-                            <input
-                              type="number"
-                              step="0.05"
-                              min="0.05"
-                              max="5"
-                              value={sc.part3PointPerQuestion}
-                              onChange={(e) => {
-                                const val = parseFloat(e.target.value) || 0.25;
-                                setConfigModalSession({
-                                  ...configModalSession,
-                                  scoringConfig: { ...sc, part3PointPerQuestion: val }
-                                });
-                              }}
-                              className="w-18 px-2 py-1 bg-white border border-slate-300 rounded-lg text-center font-bold text-xs"
-                            />
-                            <span className="text-slate-500 text-[11px]">đ</span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <div className="flex items-center gap-1.5">
+                              <label className="text-[11px] font-semibold text-slate-600">Điểm/câu:</label>
+                              <input
+                                type="number"
+                                step="0.05"
+                                min="0.05"
+                                max="5"
+                                value={sc.part3PointPerQuestion}
+                                onChange={(e) => {
+                                  const val = parseFloat(e.target.value) || 0.25;
+                                  setConfigModalSession({
+                                    ...configModalSession,
+                                    scoringConfig: { ...sc, part3PointPerQuestion: val }
+                                  });
+                                }}
+                                className="w-18 px-2 py-1 bg-white border border-slate-300 rounded-lg text-center font-bold text-xs"
+                              />
+                              <span className="text-slate-500 text-[11px]">đ</span>
+                            </div>
+                            <span className="text-[11px] font-mono bg-amber-100 text-amber-800 px-2 py-1 rounded-md font-bold">
+                              = {p3Nominal}đ ({p3Percent}%)
+                            </span>
                           </div>
-                          <span className="text-[11px] font-mono bg-amber-100 text-amber-800 px-2 py-1 rounded-md font-bold">
-                            = {p3Nominal}đ ({p3Percent}%)
-                          </span>
                         </div>
-                      </div>
+                      )}
+
+                      {/* Phần IV Tự luận */}
+                      {p4Count > 0 && (
+                        <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-2">
+                              <span className="w-5 h-5 rounded-md bg-purple-600 text-white font-black text-[11px] flex items-center justify-center">IV</span>
+                              <span className="font-bold text-slate-800">Phần IV: Câu hỏi Tự luận</span>
+                            </div>
+                            <p className="text-[11px] text-slate-500">
+                              Có {p4Count} câu • Học sinh tự trình bày lời giải
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <div className="flex items-center gap-1.5">
+                              <label className="text-[11px] font-semibold text-slate-600">Điểm/câu:</label>
+                              <input
+                                type="number"
+                                step="0.1"
+                                min="0.1"
+                                max="10"
+                                value={p4PerQ}
+                                onChange={(e) => {
+                                  const val = parseFloat(e.target.value) || 0.5;
+                                  setConfigModalSession({
+                                    ...configModalSession,
+                                    scoringConfig: { ...sc, part4PointPerQuestion: val }
+                                  });
+                                }}
+                                className="w-18 px-2 py-1 bg-white border border-slate-300 rounded-lg text-center font-bold text-xs"
+                              />
+                              <span className="text-slate-500 text-[11px]">đ</span>
+                            </div>
+                            <span className="text-[11px] font-mono bg-purple-100 text-purple-800 px-2 py-1 rounded-md font-bold">
+                              = {p4Nominal}đ ({p4Percent}%)
+                            </span>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Matrix visual breakdown */}
