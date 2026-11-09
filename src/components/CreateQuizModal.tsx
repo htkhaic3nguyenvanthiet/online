@@ -249,8 +249,9 @@ export const CreateQuizModal: React.FC<CreateQuizModalProps> = ({
     const p1 = questions.filter((q) => q.partType === 'part1_choice' || (!q.partType && q.options && q.options.length > 0)).length;
     const p2 = questions.filter((q) => q.partType === 'part2_true_false').length;
     const p3 = questions.filter((q) => q.partType === 'part3_short_answer').length;
+    const p4 = questions.filter((q) => q.partType === 'part4_essay').length;
     const totalQ = questions.length;
-    const bd = `${p1}-${p2}-${p3}-0`;
+    const bd = `${p1}-${p2}-${p3}-${p4}`;
 
     const resolvedFolder = (targetFolder === '__NEW__' && customFolderName.trim())
       ? customFolderName.trim().toUpperCase()

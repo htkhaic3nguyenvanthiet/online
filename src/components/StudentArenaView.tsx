@@ -51,7 +51,7 @@ export const isQuestionFullyAnswered = (q: Question, ans: any): boolean => {
     }
     return Object.keys(ans).length >= 4;
   }
-  if (q.partType === 'part3_short_answer') {
+  if (q.partType === 'part3_short_answer' || q.partType === 'part4_essay') {
     return typeof ans === 'string' && ans.trim().length > 0;
   }
   // Part 1 choice
@@ -121,9 +121,28 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
 
   const questions = useMemo(() => {
     if (!baseTeacherQuestions || baseTeacherQuestions.length === 0) return [];
-    const shuffledQ = shuffleArray(baseTeacherQuestions);
-    return shuffledQ.map((q) => {
-      const cloned: Question = { ...q };
+    
+    // STRICT SEQUENTIAL ORDERING: Group into Part 1 -> Part 2 -> Part 3 -> Part 4 Tự luận
+    const part1 = baseTeacherQuestions.filter((q) => !q.partType || q.partType === 'part1_choice');
+    const part2 = baseTeacherQuestions.filter((q) => q.partType === 'part2_true_false');
+    const part3 = baseTeacherQuestions.filter((q) => q.partType === 'part3_short_answer');
+    const part4 = baseTeacherQuestions.filter((q) => q.partType === 'part4_essay');
+    const otherParts = baseTeacherQuestions.filter(
+      (q) => q.partType && !['part1_choice', 'part2_true_false', 'part3_short_answer', 'part4_essay'].includes(q.partType)
+    );
+
+    // Shuffle questions WITHIN each part separately while preserving strict Part 1 -> 2 -> 3 -> 4 sequence
+    const shuffledP1 = shuffleArray(part1);
+    const shuffledP2 = shuffleArray(part2);
+    const shuffledP3 = shuffleArray(part3);
+    const shuffledP4 = shuffleArray(part4);
+    const shuffledOther = shuffleArray(otherParts);
+
+    // Concatenate in strict sequence required by teacher: Phần 1 -> Phần 2 -> Phần 3 -> Phần 4 tự luận
+    const orderedQuestions = [...shuffledP1, ...shuffledP2, ...shuffledP3, ...shuffledP4, ...shuffledOther];
+
+    return orderedQuestions.map((q, qIdx) => {
+      const cloned: Question = { ...q, order: qIdx + 1 };
       if ((!cloned.partType || cloned.partType === 'part1_choice') && cloned.options && cloned.options.length > 0) {
         const originalCorrectOpt = cloned.options.find(o => o.key === cloned.correctAnswer || o.isCorrect);
         const originalCorrectText = originalCorrectOpt ? originalCorrectOpt.text : null;
@@ -1064,6 +1083,8 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                 ? 'PHẦN II: TRẮC NGHIỆM ĐÚNG / SAI'
                 : currentQ.partType === 'part3_short_answer'
                 ? 'PHẦN III: TRẢ LỜI NGẮN (4 KÝ TỰ)'
+                : currentQ.partType === 'part4_essay'
+                ? 'PHẦN IV: CÂU HỎI TỰ LUẬN'
                 : 'PHẦN I: TRẮC NGHIỆM 4 PHƯƠNG ÁN'}
             </span>
             <span>Câu {currentIndex + 1} / {questions.length}</span>
@@ -1148,7 +1169,34 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
           </div>
         )}
 
-        {/* 3. PHẦN I: TRẮC NGHIỆM 4 PHƯƠNG ÁN LỰA CHỌN (A, B, C, D) */}
+        {/* 3. PHẦN IV: CÂU HỎI TỰ LUẬN (Học sinh trình bày lời giải / câu trả lời chi tiết) */}
+        {currentQ.partType === 'part4_essay' && (
+          <div className="bg-[#052b2d]/70 backdrop-blur-xs border border-teal-300/30 rounded-2xl p-4 text-left w-full my-2 shadow-xl flex-1 flex flex-col justify-between gap-3 overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-amber-300 font-bold uppercase tracking-wider">
+                ✍ Bài làm tự luận của học sinh:
+              </span>
+              <span className="text-[11px] text-teal-200 font-mono">
+                {userAnswers[currentQ.id]?.trim() ? `${userAnswers[currentQ.id].trim().length} ký tự` : 'Chưa nhập'}
+              </span>
+            </div>
+            <textarea
+              rows={5}
+              value={userAnswers[currentQ.id] || ''}
+              onChange={(e) => {
+                soundEffects.playClick();
+                setUserAnswers({
+                  ...userAnswers,
+                  [currentQ.id]: e.target.value
+                });
+              }}
+              placeholder="Nhập câu trả lời hoặc trình bày bài làm tự luận của bạn vào đây..."
+              className="w-full flex-1 p-3.5 bg-white text-slate-900 font-medium rounded-xl border-2 border-amber-300/80 focus:outline-none focus:ring-4 focus:ring-teal-300 shadow-inner text-sm leading-relaxed resize-none"
+            />
+          </div>
+        )}
+
+        {/* 4. PHẦN I: TRẮC NGHIỆM 4 PHƯƠNG ÁN LỰA CHỌN (A, B, C, D) */}
         {(!currentQ.partType || currentQ.partType === 'part1_choice') && currentQ.options && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 my-1 flex-1 overflow-y-auto pr-1 items-stretch">
             {currentQ.options.map((opt) => {
@@ -1771,6 +1819,8 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                                 ? 'Phần II (Đúng/Sai)'
                                 : q.partType === 'part3_short_answer'
                                 ? 'Phần III (4 số)'
+                                : q.partType === 'part4_essay'
+                                ? 'Phần IV (Tự luận)'
                                 : 'Phần I (Nhiều lựa chọn)'}
                             </span>
                             <span
@@ -1949,7 +1999,25 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                         </div>
                       )}
 
-                      {/* Static explanation if available */}
+                      {/* Part 4: Essay Review */}
+                      {q.partType === 'part4_essay' && (
+                        <div className="p-3 bg-black/40 rounded-xl border border-white/20 space-y-2 text-xs">
+                          <div>
+                            <span className="text-amber-300 font-bold">Bài làm tự luận của học sinh:</span>
+                            <div className="font-mono text-xs bg-slate-900/80 p-3 rounded-lg border border-slate-700 text-slate-100 whitespace-pre-line mt-1">
+                              {studentChoice || '(Để trống)'}
+                            </div>
+                          </div>
+                          {isAnswerKeyUnlocked && q.essayAnswerGuide && (
+                            <div>
+                              <span className="text-emerald-300 font-bold">Hướng dẫn chấm / Lời giải mẫu của Giáo viên:</span>
+                              <div className="text-xs bg-emerald-950/60 p-3 rounded-lg border border-emerald-500/40 text-emerald-100 whitespace-pre-line mt-1">
+                                {q.essayAnswerGuide}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                       {q.explanation && (
                         isAnswerKeyUnlocked ? (
                           <div className="p-2.5 bg-black/40 rounded-xl text-[11px] text-slate-300 border border-white/10">

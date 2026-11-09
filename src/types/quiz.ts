@@ -1,6 +1,6 @@
 export type OptionKey = 'A' | 'B' | 'C' | 'D';
 
-export type PartType = 'part1_choice' | 'part2_true_false' | 'part3_short_answer';
+export type PartType = 'part1_choice' | 'part2_true_false' | 'part3_short_answer' | 'part4_essay';
 
 export interface SubQuestionItem {
   key: 'a' | 'b' | 'c' | 'd';
@@ -24,6 +24,8 @@ export interface Question {
   subItems?: SubQuestionItem[];
   // Phần III: Trả lời ngắn tối đa 4 ký tự (ví dụ A.1234 -> '1234')
   shortAnswerCorrect?: string;
+  // Phần IV: Câu hỏi tự luận
+  essayAnswerGuide?: string;
   explanation?: string;
   points: number;
 }
