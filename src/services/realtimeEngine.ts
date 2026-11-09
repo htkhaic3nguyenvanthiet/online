@@ -439,6 +439,17 @@ class RealtimeEngine {
     this.submissions.unshift(newSub);
     this.saveSubmissions();
 
+    // Send to Cloud Server Backend in background (zero lag)
+    try {
+      fetch('/api/exam/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newSub)
+      }).catch((e) => console.warn('Background sync submission failed:', e));
+    } catch {
+      // ignore
+    }
+
     // Broadcast cross-tab
     if (this.channel) {
       try {

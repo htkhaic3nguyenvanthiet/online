@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Send,
   Search,
@@ -28,15 +28,24 @@ import {
   Sliders,
   CheckCircle2,
   Sparkles,
-  HelpCircle
+  HelpCircle,
+  FileSpreadsheet,
+  Download,
+  ExternalLink,
+  ChevronRight,
+  TrendingUp,
+  AlertCircle,
+  UserCheck
 } from 'lucide-react';
-import { ExamSession, Quiz, AntiCheatConfig } from '../types/quiz';
+import { ExamSession, Quiz, AntiCheatConfig, StudentSubmission, Classroom, Question } from '../types/quiz';
 import { soundEffects } from '../utils/soundEffects';
 import { getStudentExamShareUrl } from '../utils/urlHelper';
 
 interface OnlineSessionsViewProps {
   sessions: ExamSession[];
   quizzes?: Quiz[];
+  submissions?: StudentSubmission[];
+  classrooms?: Classroom[];
   onCreateSession: () => void;
   onOpenLiveMonitor: (session: ExamSession) => void;
   onOpenStudentExam: (sessionId: string) => void;
@@ -45,11 +54,14 @@ interface OnlineSessionsViewProps {
   onDeleteSession?: (sessionId: string) => void;
   onAddNewSession?: (newSession: ExamSession) => void;
   onUpdateSession?: (updatedSession: ExamSession) => void;
+  onResetStudentAttempts?: (sessionId: string, studentName: string) => void;
 }
 
 export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
   sessions,
   quizzes = [],
+  submissions = [],
+  classrooms = [],
   onCreateSession,
   onOpenLiveMonitor,
   onOpenStudentExam,
@@ -57,13 +69,20 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
   onToggleSessionStatus,
   onDeleteSession,
   onAddNewSession,
-  onUpdateSession
+  onUpdateSession,
+  onResetStudentAttempts
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClassFilter, setSelectedClassFilter] = useState('all');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('all');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [activeQrModal, setActiveQrModal] = useState<ExamSession | null>(null);
+
+  // Dedicated Session Statistics & Results Modal
+  const [activeStatsSession, setActiveStatsSession] = useState<ExamSession | null>(null);
+  const [statsSearchTerm, setStatsSearchTerm] = useState('');
+  const [statsGradeFilter, setStatsGradeFilter] = useState<'all' | 'gioi' | 'kha' | 'trungbinh' | 'yeu'>('all');
+  const [inspectingSub, setInspectingSub] = useState<StudentSubmission | null>(null);
 
   // Configure / Assign Modal State
   const [configModalSession, setConfigModalSession] = useState<ExamSession | null>(null);
@@ -99,12 +118,54 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
     return matchesSearch && matchesStatus;
   });
 
+  const getSessionShareText = (session: ExamSession) => {
+    const linkedQuiz = quizzes.find((q) => q.id === session.quizId || q.title === session.title);
+    const subjectName = linkedQuiz?.subject || 'Công nghệ 12';
+    const durationMins = session.durationMinutes || 50;
+    const realQCount = session.questionCount || (linkedQuiz?.questions && linkedQuiz.questions.length > 0 ? linkedQuiz.questions.length : linkedQuiz?.questionCount) || 28;
+    const shareLink = getStudentExamShareUrl(session.id);
+    return `📌 BÀI KIỂM TRA TRỰC TUYẾN - THPT MANG THÍT\n📘 Môn học: ${subjectName}\n📝 Bài kiểm tra: ${session.title}\n⏱ Thời gian làm bài: ${durationMins} phút (${realQCount} câu hỏi)\n🏫 Đối tượng: ${session.className || 'Toàn bộ học sinh'}\n👉 Học sinh bấm vào liên kết bên dưới để vào thi ngay:\n${shareLink}`;
+  };
+
   const handleCopyLink = (session: ExamSession) => {
     soundEffects.playClick();
-    const link = getStudentExamShareUrl(session.id);
-    navigator.clipboard?.writeText(link);
+    const fullText = getSessionShareText(session);
+    navigator.clipboard?.writeText(fullText);
     setCopiedId(session.id);
-    setTimeout(() => setCopiedId(null), 2000);
+    setTimeout(() => setCopiedId(null), 2500);
+  };
+
+  const exportSessionExcel = (session: ExamSession, sessionSubs: StudentSubmission[]) => {
+    soundEffects.playClick();
+    let csv = '\uFEFF'; // UTF-8 BOM for Microsoft Excel
+    csv += `BẢNG THỐNG KÊ KẾT QUẢ BÀI KIỂM TRA TRỰC TUYẾN - TRƯỜNG THPT MANG THÍT\n`;
+    csv += `Tên bài kiểm tra:,"${session.title}",Môn học:,"Công nghệ 12",Thời lượng:,"${session.durationMinutes} phút"\n`;
+    csv += `Lớp đối tượng:,"${session.className || 'Khối 12'}",Mã phòng thi:,"${session.id}",Thời điểm xuất file:,"${new Date().toLocaleString('vi-VN')}"\n`;
+    csv += `Tổng số học sinh nộp bài:,"${sessionSubs.length}"\n\n`;
+    csv += `STT,Mã định danh,Họ và tên học sinh,Lớp học,Thời gian nộp bài,Số câu đúng,Điểm số (Thang 10),Xếp loại năng lực,Thời gian hoàn thành,Tình trạng\n`;
+
+    sessionSubs.forEach((sub, idx) => {
+      const scoreNum = sub.score;
+      const rank = scoreNum >= 8.0 ? 'Giỏi' : scoreNum >= 6.5 ? 'Khá' : scoreNum >= 5.0 ? 'Trung bình' : 'Chưa đạt';
+      const mins = Math.floor((sub.durationSeconds || 0) / 60);
+      const secs = (sub.durationSeconds || 0) % 60;
+      const timeFormatted = `${mins} phút ${secs} giây`;
+      const status = sub.isDisqualified ? 'Vi phạm quy chế' : 'Hợp lệ';
+
+      csv += `${idx + 1},"${sub.studentInfo || ''}","${sub.studentName}","${session.className || 'Khối 12'}","${sub.submittedAt}",${sub.correctAnswersCount}/${sub.totalQuestions},${sub.score},"${rank}","${timeFormatted}","${status}"\n`;
+    });
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const safeTitle = session.title.replace(/[^a-zA-Z0-9_-]/g, '_');
+    a.download = `BangDiem_${safeTitle}_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    soundEffects.playCorrect();
   };
 
   const handleCreateNewSessionSubmit = (e: React.FormEvent) => {
@@ -177,12 +238,12 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">Các phiên giao đề Online</h1>
-            <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full border border-emerald-300">
-              Chống gian lận & Giám sát AI
+            <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2.5 py-0.5 rounded-full border border-emerald-300">
+              Chuẩn GDPT 2018 & TT 22
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Quản lý số lượt làm bài, thời gian làm, thời hạn nộp và tự động nhận điểm trực tiếp về máy chủ của Thầy Hồ Tấn Khải
+            Mỗi đề thi được tích hợp sẵn 1 link giao bài kèm đầy đủ thông tin, kiểm tra và bảng thống kê kết quả điểm số riêng biệt
           </p>
         </div>
 
@@ -191,104 +252,15 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
             soundEffects.playClick();
             setIsNewModalOpen(true);
           }}
-          className="btn-3d btn-3d-teal px-4 py-2 text-xs rounded-xl flex items-center gap-1.5 cursor-pointer font-bold shadow-md"
+          className="btn-3d btn-3d-teal px-4 py-2 text-xs rounded-xl flex items-center gap-1.5 cursor-pointer font-bold shadow-md text-white"
         >
           <Plus className="w-4 h-4" />
           <span>Tạo phiên giao đề mới</span>
         </button>
       </div>
 
-      {/* LARGE PROMINENT TEACHER SHARE LINK BOX FOR ACTIVE SESSION (REQUIREMENT 2) */}
-      {sessions.length > 0 && (() => {
-        const activeSession = sessions.find((s) => s.status === 'active') || sessions[0];
-        const activeQuiz = quizzes.find((q) => q.id === activeSession.quizId || q.title === activeSession.title);
-        const subjectName = activeQuiz?.subject || 'Công nghệ 12';
-        const durationMins = activeSession.durationMinutes || 50;
-        const qCount = activeSession.questionCount || (activeQuiz?.questions?.length) || 28;
-        const shareLink = getStudentExamShareUrl(activeSession.id);
-        const fullShareText = `📌 BÀI KIỂM TRA TRỰC TUYẾN - THPT MANG THÍT\n📘 Môn học: ${subjectName}\n📝 Bài kiểm tra: ${activeSession.title}\n⏱ Thời gian làm bài: ${durationMins} phút (${qCount} câu hỏi)\n🏫 Đối tượng: ${activeSession.className || 'Toàn bộ học sinh'}\n👉 Học sinh bấm vào liên kết bên dưới để vào thi ngay:\n${shareLink}`;
-
-        return (
-          <div className="bg-gradient-to-r from-[#062c30] via-[#094046] to-[#0d555c] rounded-3xl p-5 sm:p-6 text-white shadow-xl border-2 border-teal-400/50 space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-teal-400/20 border border-teal-300/40 flex items-center justify-center text-teal-300 shrink-0">
-                  <Share2 className="w-6 h-6 animate-pulse" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="bg-amber-400 text-slate-950 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-xs">
-                      Nổi bật • Giao bài 1-Click
-                    </span>
-                    <span className="text-xs text-teal-200 font-mono">Mã phòng: {activeSession.id}</span>
-                  </div>
-                  <h2 className="text-lg font-black text-white mt-1 leading-snug">
-                    {activeSession.title}
-                  </h2>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  onClick={() => {
-                    soundEffects.playClick();
-                    navigator.clipboard?.writeText(fullShareText);
-                    setCopiedId('full-' + activeSession.id);
-                    setTimeout(() => setCopiedId(null), 2500);
-                  }}
-                  className="btn-3d btn-3d-emerald px-5 py-3 text-xs sm:text-sm rounded-xl font-black flex items-center gap-2 cursor-pointer shadow-lg text-white"
-                >
-                  {copiedId === 'full-' + activeSession.id ? (
-                    <>
-                      <Check className="w-4 h-4 text-white" />
-                      <span>Đã sao chép nội dung & link giao!</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-4 h-4" />
-                      <span>Sao chép nội dung & link giao bài</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* Structured Details Badge Row */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-              <div className="bg-black/30 border border-teal-300/20 rounded-xl p-2.5 flex items-center gap-2">
-                <span className="text-teal-300 font-bold">📘 Môn:</span>
-                <span className="font-extrabold text-white truncate">{subjectName}</span>
-              </div>
-              <div className="bg-black/30 border border-teal-300/20 rounded-xl p-2.5 flex items-center gap-2">
-                <span className="text-amber-300 font-bold">⏱ Thời gian:</span>
-                <span className="font-extrabold text-white">{durationMins} phút</span>
-              </div>
-              <div className="bg-black/30 border border-teal-300/20 rounded-xl p-2.5 flex items-center gap-2">
-                <span className="text-blue-300 font-bold">📝 Số câu:</span>
-                <span className="font-extrabold text-white">{qCount} câu</span>
-              </div>
-              <div className="bg-black/30 border border-teal-300/20 rounded-xl p-2.5 flex items-center gap-2">
-                <span className="text-emerald-300 font-bold">🏫 Lớp:</span>
-                <span className="font-extrabold text-white truncate">{activeSession.className || 'Tất cả lớp'}</span>
-              </div>
-            </div>
-
-            {/* Directly visible styled Link & Preview box */}
-            <div className="bg-black/40 border border-teal-400/30 rounded-2xl p-3.5 space-y-2">
-              <div className="flex items-center justify-between text-xs text-teal-200">
-                <span className="font-bold">Nội dung xem trước khi gửi Zalo/Facebook cho học sinh:</span>
-                <span className="text-[10px] text-teal-300/80">Học sinh bấm vào là thi trực tiếp</span>
-              </div>
-              <div className="font-mono text-xs text-teal-100 bg-slate-950/80 p-3 rounded-xl border border-teal-500/30 whitespace-pre-line leading-relaxed select-all">
-                {fullShareText}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
       {/* Filter Bar */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="bg-white rounded-2xl border border-slate-200/90 p-3.5 shadow-xs grid grid-cols-1 md:grid-cols-3 gap-3">
         <div>
           <label className="block text-[11px] font-bold text-slate-600 mb-1">Tìm theo tên đề thi:</label>
           <div className="relative">
@@ -297,7 +269,7 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Nhập tên đề thi"
+              placeholder="Nhập tên đề thi cần tìm..."
               className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-teal-500 focus:bg-white"
             />
           </div>
@@ -318,230 +290,679 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
         </div>
 
         <div>
-          <label className="block text-[11px] font-bold text-slate-600 mb-1">Trạng thái:</label>
+          <label className="block text-[11px] font-bold text-slate-600 mb-1">Trạng thái phòng thi:</label>
           <select
             value={selectedStatusFilter}
             onChange={(e) => setSelectedStatusFilter(e.target.value)}
             className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-teal-500 focus:bg-white font-medium"
           >
             <option value="all">Tất cả trạng thái</option>
-            <option value="active">Đang diễn ra</option>
+            <option value="active">Đang mở làm bài</option>
             <option value="completed">Đã kết thúc / Tạm dừng</option>
           </select>
         </div>
       </div>
 
-      {/* Sessions Table with Professional Assignment Columns */}
+      {/* Streamlined Sessions Table with 1-Click Share & Per-Session Results */}
       <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50/90 font-bold text-slate-600 border-b border-slate-200">
+            <thead className="bg-slate-50/90 font-bold text-slate-700 border-b border-slate-200">
               <tr>
-                <th className="py-3 px-4 min-w-[200px]">Tên bài kiểm tra</th>
-                <th className="py-3 px-4 text-center">Giao đề & Cài đặt</th>
-                <th className="py-3 px-4 text-center">Thời lượng</th>
-                <th className="py-3 px-4 text-center">Số câu hỏi</th>
-                <th className="py-3 px-4 text-center">Số lượt làm</th>
-                <th className="py-3 px-4 min-w-[140px]">Thời hạn nộp</th>
-                <th className="py-3 px-4 text-center">Giám sát chống gian lận</th>
-                <th className="py-3 px-4 text-center">Hành động</th>
-                <th className="py-3 px-4 text-center">Trạng thái</th>
+                <th className="py-3 px-4 min-w-[260px]">Đề thi & Thông tin môn học</th>
+                <th className="py-3 px-4 min-w-[220px]">Link giao bài (Gắn ngay đề)</th>
+                <th className="py-3 px-4 min-w-[200px] text-center">Kiểm tra & Kết quả làm bài</th>
+                <th className="py-3 px-4 text-center min-w-[130px]">Cài đặt & Thao tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700">
-              {filteredSessions.map((sess) => {
-                const maxTabs = sess.antiCheatConfig?.maxTabSwitches ?? 3;
-                const linkedQuiz = quizzes.find((q) => q.id === sess.quizId || q.title === sess.title);
-                const realQCount = sess.questionCount || (linkedQuiz?.questions && linkedQuiz.questions.length > 0 ? linkedQuiz.questions.length : linkedQuiz?.questionCount) || 28;
-                const qBreakdown = linkedQuiz?.breakdown || `${realQCount}-0-0-0`;
+              {filteredSessions.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="py-8 text-center text-slate-400">
+                    Chưa có phiên giao đề nào phù hợp với bộ lọc tìm kiếm.
+                  </td>
+                </tr>
+              ) : (
+                filteredSessions.map((sess) => {
+                  const linkedQuiz = quizzes.find((q) => q.id === sess.quizId || q.title === sess.title);
+                  const subjectName = linkedQuiz?.subject || 'Công nghệ 12';
+                  const realQCount = sess.questionCount || (linkedQuiz?.questions && linkedQuiz.questions.length > 0 ? linkedQuiz.questions.length : linkedQuiz?.questionCount) || 28;
+                  const sessionSubs = (submissions || []).filter((s) => s.sessionId === sess.id);
 
-                return (
-                  <tr key={sess.id} className="hover:bg-slate-50/70 transition-colors">
-                    {/* Tên */}
-                    <td className="py-3.5 px-4">
-                      <div className="font-bold text-slate-900 leading-snug">{sess.title}</div>
-                      <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-2">
-                        <span>Lớp: <strong className="text-slate-600">{sess.className || 'Toàn trường'}</strong></span>
-                        <span>• Mã: {sess.id}</span>
-                      </div>
-                    </td>
+                  return (
+                    <tr key={sess.id} className="hover:bg-slate-50/80 transition-colors">
+                      {/* Column 1: Đề thi & Thông tin môn học */}
+                      <td className="py-4 px-4">
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="font-black text-slate-900 text-sm">{sess.title}</span>
+                            <span className="bg-teal-50 text-teal-800 text-[10px] font-bold px-2 py-0.5 rounded-md border border-teal-200">
+                              {subjectName}
+                            </span>
+                          </div>
 
-                    {/* Giao đề & Cài đặt (Button to configure attempts, time, deadlines) */}
-                    <td className="py-3.5 px-4 text-center">
-                      <button
-                        onClick={() => {
-                          soundEffects.playClick();
-                          const toConfig: ExamSession = JSON.parse(JSON.stringify(sess));
-                          if (!toConfig.scoringConfig) {
-                            toConfig.scoringConfig = {
-                              totalPoints: 10.0,
-                              durationMinutes: toConfig.durationMinutes || 50,
-                              part1PointPerQuestion: 0.25,
-                              part2PointPerQuestion: 1.0,
-                              part3PointPerQuestion: 0.25,
-                              allowViewAnswerKey: true,
-                              viewAnswerMinScore: 4.0,
-                              allowAiTutorExplanation: true,
-                            };
-                          }
-                          setConfigModalSession(toConfig);
-                          setConfigModalTab('scoring');
-                        }}
-                        className="btn-3d btn-3d-slate px-2.5 py-1 text-[11px] rounded-lg font-bold flex items-center justify-center gap-1 mx-auto cursor-pointer"
-                        title="Tùy chỉnh cấu hình điểm, xem đáp án, thời gian thi"
-                      >
-                        <Settings className="w-3.5 h-3.5 text-teal-600" />
-                        <span>Cài đặt giao đề</span>
-                      </button>
-                    </td>
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500 font-medium">
+                            <span className="text-slate-700 font-bold">🏫 {sess.className || 'Toàn bộ học sinh'}</span>
+                            <span>•</span>
+                            <span className="font-mono text-slate-600">Mã: {sess.id}</span>
+                            <span>•</span>
+                            <span className="text-amber-800 font-semibold">⏱ {sess.durationMinutes} phút</span>
+                            <span>•</span>
+                            <span className="text-emerald-700 font-semibold">📝 {realQCount} câu</span>
+                            <span>•</span>
+                            <span>{sess.allowedAttempts === 0 ? 'Vô hạn lượt thi' : `${sess.allowedAttempts} lượt thi`}</span>
+                          </div>
 
-                    {/* Thời lượng */}
-                    <td className="py-3.5 px-4 text-center font-mono font-bold text-slate-800">
-                      <span className="bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
-                        {sess.durationMinutes}&apos;
-                      </span>
-                    </td>
+                          <div className="text-[11px] text-slate-400 font-mono">
+                            Hạn nộp: <span className="text-slate-600 font-semibold">{sess.endTime}</span>
+                          </div>
+                        </div>
+                      </td>
 
-                    {/* Số câu hỏi */}
-                    <td className="py-3.5 px-4 text-center">
-                      <span className="inline-block bg-teal-50 text-teal-800 border border-teal-200 font-black text-xs px-2.5 py-1 rounded-lg">
-                        {realQCount} câu
-                      </span>
-                      <div className="text-[10px] text-slate-500 font-mono mt-0.5">
-                        {qBreakdown}
-                      </div>
-                    </td>
+                      {/* Column 2: Link Giao Bài 1-Click (Gắn ngay Đề cần giao) */}
+                      <td className="py-4 px-4">
+                        <div className="flex flex-col gap-2 max-w-[260px]">
+                          <button
+                            onClick={() => handleCopyLink(sess)}
+                            className="btn-3d btn-3d-teal px-4 py-2.5 text-xs rounded-xl font-black flex items-center justify-center gap-2 cursor-pointer shadow-md text-white w-full"
+                            title="Sao chép toàn bộ thông tin đề thi kèm link trực tiếp để gửi Zalo/Facebook"
+                          >
+                            {copiedId === sess.id ? (
+                              <>
+                                <Check className="w-4 h-4 text-emerald-300" />
+                                <span>Đã sao chép link & bài giao!</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-4 h-4" />
+                                <span>Sao chép Link Giao Bài</span>
+                              </>
+                            )}
+                          </button>
 
-                    {/* Số lượt làm */}
-                    <td className="py-3.5 px-4 text-center">
-                      <span
-                        className={`inline-block font-bold text-[11px] px-2 py-0.5 rounded-md ${
-                          sess.allowedAttempts === 1
-                            ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                            : sess.allowedAttempts === 0
-                            ? 'bg-purple-50 text-purple-700 border border-purple-200'
-                            : 'bg-blue-50 text-blue-700 border border-blue-200'
-                        }`}
-                      >
-                        {sess.allowedAttempts === 0
-                          ? 'Vô hạn lượt'
-                          : sess.allowedAttempts === 1
-                          ? '1 lượt duy nhất'
-                          : `${sess.allowedAttempts} lượt`}
-                      </span>
-                    </td>
+                          <div className="flex items-center justify-between px-1 text-[11px]">
+                            <button
+                              onClick={() => {
+                                soundEffects.playClick();
+                                setActiveQrModal(sess);
+                              }}
+                              className="text-teal-700 hover:text-teal-900 font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                              title="Xem mã QR để học sinh quét điện thoại"
+                            >
+                              <QrCode className="w-3.5 h-3.5 text-teal-600" />
+                              <span>Mã QR</span>
+                            </button>
 
-                    {/* Thời hạn nộp */}
-                    <td className="py-3.5 px-4 text-[11px] font-mono text-slate-600">
-                      <div>Từ: {sess.startTime}</div>
-                      <div className="text-slate-900 font-bold">Đến: {sess.endTime}</div>
-                    </td>
+                            <button
+                              onClick={() => {
+                                soundEffects.playClick();
+                                onOpenStudentExam(sess.id);
+                              }}
+                              className="text-pink-600 hover:text-pink-800 font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                              title="Thử trải nghiệm giao diện thi của học sinh"
+                            >
+                              <PlayCircle className="w-3.5 h-3.5 text-pink-500" />
+                              <span>Vào thi thử</span>
+                            </button>
+                          </div>
+                        </div>
+                      </td>
 
-                    {/* Giám sát chống gian lận */}
-                    <td className="py-3.5 px-4 text-center">
-                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                        <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                        <span>Chặn {maxTabs} tab • Khóa AI</span>
-                      </span>
-                    </td>
-
-                    {/* Hành động */}
-                    <td className="py-3.5 px-4 text-center">
-                      <div className="inline-flex items-center gap-1">
-                        <button
-                          onClick={() => {
-                            soundEffects.playClick();
-                            onOpenStudentExam(sess.id);
-                          }}
-                          className="px-2.5 py-1 text-[11px] font-black text-rose-700 bg-rose-50 border border-rose-300 rounded-md hover:bg-rose-100 cursor-pointer shadow-xs"
-                          title="Vào giao diện làm bài thi trực tuyến"
-                        >
-                          Vào thi
-                        </button>
-                        {onOpenAttendanceSummary && (
+                      {/* Column 3: Kiểm tra & Kết quả làm bài (Bảng Thống kê riêng của từng đề) */}
+                      <td className="py-4 px-4 text-center">
+                        <div className="inline-flex flex-col items-center gap-2">
                           <button
                             onClick={() => {
                               soundEffects.playClick();
-                              onOpenAttendanceSummary(sess);
+                              setActiveStatsSession(sess);
+                              setStatsSearchTerm('');
+                              setStatsGradeFilter('all');
                             }}
-                            className="px-2 py-1 text-[11px] font-black text-emerald-800 bg-emerald-50 border border-emerald-300 rounded-md hover:bg-emerald-100 cursor-pointer flex items-center gap-1 shadow-xs"
-                            title="Bảng tổng kết điểm số và điểm danh học sinh của bài kiểm tra này"
+                            className="btn-3d btn-3d-amber px-4 py-2.5 text-xs rounded-xl font-black flex items-center gap-2 cursor-pointer shadow-md text-white"
+                            title="Mở bảng thống kê kết quả làm bài & xuất file Excel điểm số của đề này"
                           >
-                            <ClipboardCheck className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>Điểm danh</span>
+                            <ClipboardCheck className="w-4 h-4" />
+                            <span>Bảng Thống kê & Điểm số ({sessionSubs.length} HS)</span>
                           </button>
-                        )}
-                        <button
-                          onClick={() => {
-                            soundEffects.playClick();
-                            onOpenLiveMonitor(sess);
-                          }}
-                          className="px-2 py-1 text-[11px] font-bold text-teal-700 bg-teal-50 border border-teal-200 rounded-md hover:bg-teal-100 cursor-pointer"
-                          title="Theo dõi bảng điểm thời gian thực"
-                        >
-                          Giám sát
-                        </button>
-                        <button
-                          onClick={() => handleCopyLink(sess)}
-                          className="p-1 text-slate-500 hover:text-teal-700 hover:bg-slate-100 rounded-lg cursor-pointer"
-                          title="Sao chép link làm bài"
-                        >
-                          {copiedId === sess.id ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-                        </button>
-                        <button
-                          onClick={() => {
-                            soundEffects.playClick();
-                            setActiveQrModal(sess);
-                          }}
-                          className="p-1 text-slate-500 hover:text-teal-700 hover:bg-slate-100 rounded-lg cursor-pointer"
-                          title="Xem mã QR quét phòng thi"
-                        >
-                          <QrCode className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            soundEffects.playClick();
-                            onToggleSessionStatus?.(sess.id);
-                          }}
-                          className="px-1.5 py-1 text-[10px] font-semibold text-amber-700 hover:bg-amber-50 rounded cursor-pointer"
-                        >
-                          {sess.status === 'active' ? 'Dừng' : 'Mở'}
-                        </button>
-                        <button
-                          onClick={() => {
-                            soundEffects.playClick();
-                            if (confirm(`Bạn có chắc muốn xóa phiên: "${sess.title}"?`)) {
-                              onDeleteSession?.(sess.id);
-                            }
-                          }}
-                          className="p-1 text-slate-400 hover:text-rose-600 cursor-pointer"
-                          title="Xóa phiên"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
 
-                    {/* Trạng thái */}
-                    <td className="py-3.5 px-4 text-center">
-                      {sess.status === 'active' ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                          Đang mở
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-600 bg-slate-100 border border-slate-300 px-2.5 py-0.5 rounded-full">
-                          Đã đóng
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+                          <div className="flex items-center gap-1.5">
+                            {sess.status === 'active' ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                Đang mở thi
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-300 px-2 py-0.5 rounded-full">
+                                Tạm dừng
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Column 4: Cài đặt & Thao tác */}
+                      <td className="py-4 px-4 text-center">
+                        <div className="inline-flex items-center gap-1.5">
+                          <button
+                            onClick={() => {
+                              soundEffects.playClick();
+                              const toConfig: ExamSession = JSON.parse(JSON.stringify(sess));
+                              if (!toConfig.scoringConfig) {
+                                toConfig.scoringConfig = {
+                                  totalPoints: 10.0,
+                                  durationMinutes: toConfig.durationMinutes || 50,
+                                  part1PointPerQuestion: 0.25,
+                                  part2PointPerQuestion: 1.0,
+                                  part3PointPerQuestion: 0.25,
+                                  allowViewAnswerKey: true,
+                                  viewAnswerMinScore: 4.0,
+                                  allowAiTutorExplanation: true,
+                                };
+                              }
+                              setConfigModalSession(toConfig);
+                              setConfigModalTab('scoring');
+                            }}
+                            className="p-2 text-slate-600 hover:text-teal-700 hover:bg-teal-50 rounded-xl border border-slate-200 cursor-pointer transition-colors"
+                            title="Cài đặt điểm số Thông tư 22, thời gian thi & quy chế"
+                          >
+                            <Settings className="w-4 h-4" />
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              soundEffects.playClick();
+                              onToggleSessionStatus?.(sess.id);
+                            }}
+                            className={`px-2.5 py-1.5 text-xs font-bold rounded-xl border cursor-pointer transition-colors ${
+                              sess.status === 'active'
+                                ? 'text-amber-700 bg-amber-50 border-amber-200 hover:bg-amber-100'
+                                : 'text-emerald-700 bg-emerald-50 border-emerald-200 hover:bg-emerald-100'
+                            }`}
+                            title={sess.status === 'active' ? 'Tạm dừng nhận bài thi' : 'Tiếp tục mở phòng thi'}
+                          >
+                            {sess.status === 'active' ? 'Dừng' : 'Mở'}
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              soundEffects.playClick();
+                              if (confirm(`Bạn có chắc chắn muốn xóa phiên: "${sess.title}"?`)) {
+                                onDeleteSession?.(sess.id);
+                              }
+                            }}
+                            className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl border border-slate-200 cursor-pointer transition-colors"
+                            title="Xóa phiên thi"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* MODAL: BẢNG THỐNG KÊ KẾT QUẢ & ĐÁNH GIÁ ĐIỂM SỐ RIÊNG CHO TỪNG ĐỀ (PER-SESSION RESULTS & EXCEL EXPORT) */}
+      {activeStatsSession && (() => {
+        const curSessionSubs = (submissions || []).filter((s) => s.sessionId === activeStatsSession.id);
+        const totalSubs = curSessionSubs.length;
+
+        // Statistics computation
+        const scores = curSessionSubs.map((s) => s.score);
+        const avgScore = totalSubs > 0 ? scores.reduce((a, b) => a + b, 0) / totalSubs : 0;
+        const maxScore = totalSubs > 0 ? Math.max(...scores) : 0;
+        const minScore = totalSubs > 0 ? Math.min(...scores) : 0;
+        const passedCount = curSessionSubs.filter((s) => s.score >= 5.0).length;
+        const passRate = totalSubs > 0 ? Math.round((passedCount / totalSubs) * 100) : 0;
+
+        // Breakdown according to Circular 22
+        const gioiCount = curSessionSubs.filter((s) => s.score >= 8.0).length;
+        const khaCount = curSessionSubs.filter((s) => s.score >= 6.5 && s.score < 8.0).length;
+        const tbCount = curSessionSubs.filter((s) => s.score >= 5.0 && s.score < 6.5).length;
+        const yeuCount = curSessionSubs.filter((s) => s.score < 5.0).length;
+
+        const gioiPct = totalSubs > 0 ? Math.round((gioiCount / totalSubs) * 100) : 0;
+        const khaPct = totalSubs > 0 ? Math.round((khaCount / totalSubs) * 100) : 0;
+        const tbPct = totalSubs > 0 ? Math.round((tbCount / totalSubs) * 100) : 0;
+        const yeuPct = totalSubs > 0 ? Math.max(0, 100 - gioiPct - khaPct - tbPct) : 0;
+
+        // Filtered list
+        const filteredSubs = curSessionSubs.filter((sub) => {
+          const matchName = sub.studentName.toLowerCase().includes(statsSearchTerm.toLowerCase()) ||
+            (sub.studentInfo && sub.studentInfo.toLowerCase().includes(statsSearchTerm.toLowerCase()));
+          if (!matchName) return false;
+          if (statsGradeFilter === 'gioi') return sub.score >= 8.0;
+          if (statsGradeFilter === 'kha') return sub.score >= 6.5 && sub.score < 8.0;
+          if (statsGradeFilter === 'trungbinh') return sub.score >= 5.0 && sub.score < 6.5;
+          if (statsGradeFilter === 'yeu') return sub.score < 5.0;
+          return true;
+        });
+
+        return (
+          <div className="fixed inset-0 z-50 bg-slate-900/65 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in">
+            <div className="bg-white rounded-3xl max-w-5xl w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-5 animate-in zoom-in-95 max-h-[92vh] flex flex-col">
+              {/* Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-3 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-md shrink-0">
+                    <ClipboardCheck className="w-6 h-6 stroke-[2.2]" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-black text-base sm:text-lg text-slate-900 leading-tight">
+                        Thống Kê Kết Quả Làm Bài & Bảng Điểm
+                      </h3>
+                      <span className="text-[10px] bg-teal-100 text-teal-800 font-bold px-2 py-0.5 rounded-full border border-teal-300">
+                        {activeStatsSession.className || 'Toàn trường'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Bài kiểm tra: <strong className="text-slate-800">{activeStatsSession.title}</strong> • Mã phòng: {activeStatsSession.id}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => exportSessionExcel(activeStatsSession, curSessionSubs)}
+                    className="btn-3d btn-3d-emerald px-4 py-2 text-xs rounded-xl font-black flex items-center gap-1.5 cursor-pointer shadow-md text-white"
+                    title="Tải bảng điểm Excel / CSV chuẩn Sở Giáo dục & Đào tạo"
+                  >
+                    <FileSpreadsheet className="w-4 h-4" />
+                    <span>Xuất Excel Bảng Điểm</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveStatsSession(null)}
+                    className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl cursor-pointer transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Body Viewport */}
+              <div className="overflow-y-auto space-y-4 pr-1">
+                {/* 4 KPI Statistic Cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 flex flex-col justify-between">
+                    <span className="text-[11px] font-bold text-slate-500">Số bài đã nộp</span>
+                    <div className="text-2xl font-black text-slate-900 mt-1">
+                      {totalSubs} <span className="text-xs font-normal text-slate-500">học sinh</span>
+                    </div>
+                  </div>
+
+                  <div className="bg-teal-50/80 border border-teal-200/80 rounded-2xl p-3 flex flex-col justify-between">
+                    <span className="text-[11px] font-bold text-teal-700">Điểm trung bình (ĐTB)</span>
+                    <div className="text-2xl font-black text-teal-800 mt-1">
+                      {avgScore.toFixed(2)} <span className="text-xs font-normal text-teal-600">/ 10đ</span>
+                    </div>
+                  </div>
+
+                  <div className="bg-amber-50/80 border border-amber-200/80 rounded-2xl p-3 flex flex-col justify-between">
+                    <span className="text-[11px] font-bold text-amber-700">Điểm cao nhất / Thấp nhất</span>
+                    <div className="text-lg font-black text-amber-900 mt-1">
+                      {maxScore}đ <span className="text-xs font-normal text-slate-400">•</span> {minScore}đ
+                    </div>
+                  </div>
+
+                  <div className="bg-emerald-50/80 border border-emerald-200/80 rounded-2xl p-3 flex flex-col justify-between">
+                    <span className="text-[11px] font-bold text-emerald-700">Tỉ lệ đạt chuẩn (≥ 5.0)</span>
+                    <div className="text-2xl font-black text-emerald-800 mt-1">
+                      {passRate}% <span className="text-xs font-normal text-emerald-600">({passedCount}/{totalSubs})</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Score Distribution Visual (Circular 22) */}
+                <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                    <span>Phổ điểm đánh giá năng lực học sinh (Chuẩn Thông tư 22):</span>
+                    <span className="text-slate-400 font-normal">Tổng: {totalSubs} bài làm</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-xs">
+                    <div className="bg-emerald-100/70 border border-emerald-200 p-2 rounded-xl">
+                      <div className="flex items-center justify-between">
+                        <span className="font-extrabold text-emerald-900">Giỏi (8.0 - 10đ)</span>
+                        <span className="font-black text-emerald-800">{gioiCount} ({gioiPct}%)</span>
+                      </div>
+                      <div className="w-full bg-emerald-200/60 rounded-full h-1.5 mt-1.5 overflow-hidden">
+                        <div className="bg-emerald-600 h-full rounded-full" style={{ width: `${gioiPct}%` }}></div>
+                      </div>
+                    </div>
+
+                    <div className="bg-blue-100/70 border border-blue-200 p-2 rounded-xl">
+                      <div className="flex items-center justify-between">
+                        <span className="font-extrabold text-blue-900">Khá (6.5 - 7.9đ)</span>
+                        <span className="font-black text-blue-800">{khaCount} ({khaPct}%)</span>
+                      </div>
+                      <div className="w-full bg-blue-200/60 rounded-full h-1.5 mt-1.5 overflow-hidden">
+                        <div className="bg-blue-600 h-full rounded-full" style={{ width: `${khaPct}%` }}></div>
+                      </div>
+                    </div>
+
+                    <div className="bg-amber-100/70 border border-amber-200 p-2 rounded-xl">
+                      <div className="flex items-center justify-between">
+                        <span className="font-extrabold text-amber-900">Trung bình (5 - 6.4đ)</span>
+                        <span className="font-black text-amber-800">{tbCount} ({tbPct}%)</span>
+                      </div>
+                      <div className="w-full bg-amber-200/60 rounded-full h-1.5 mt-1.5 overflow-hidden">
+                        <div className="bg-amber-600 h-full rounded-full" style={{ width: `${tbPct}%` }}></div>
+                      </div>
+                    </div>
+
+                    <div className="bg-rose-100/70 border border-rose-200 p-2 rounded-xl">
+                      <div className="flex items-center justify-between">
+                        <span className="font-extrabold text-rose-900">Chưa đạt (&lt; 5.0đ)</span>
+                        <span className="font-black text-rose-800">{yeuCount} ({yeuPct}%)</span>
+                      </div>
+                      <div className="w-full bg-rose-200/60 rounded-full h-1.5 mt-1.5 overflow-hidden">
+                        <div className="bg-rose-600 h-full rounded-full" style={{ width: `${yeuPct}%` }}></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Search & Filter Toolbar */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+                  <div className="relative flex-1 max-w-sm">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                    <input
+                      type="text"
+                      value={statsSearchTerm}
+                      onChange={(e) => setStatsSearchTerm(e.target.value)}
+                      placeholder="Tìm theo tên học sinh..."
+                      className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-teal-500 focus:bg-white"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    {[
+                      { key: 'all', label: 'Tất cả' },
+                      { key: 'gioi', label: 'Giỏi' },
+                      { key: 'kha', label: 'Khá' },
+                      { key: 'trungbinh', label: 'TB' },
+                      { key: 'yeu', label: 'Chưa đạt' }
+                    ].map((f) => (
+                      <button
+                        key={f.key}
+                        onClick={() => setStatsGradeFilter(f.key as any)}
+                        className={`px-2.5 py-1 text-[11px] rounded-lg font-bold cursor-pointer transition-colors ${
+                          statsGradeFilter === f.key
+                            ? 'bg-slate-900 text-white'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        {f.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Submissions List Table */}
+                <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 font-bold text-slate-600 border-b border-slate-200">
+                      <tr>
+                        <th className="py-2.5 px-3 text-center w-12">STT</th>
+                        <th className="py-2.5 px-3 min-w-[170px]">Họ và tên học sinh</th>
+                        <th className="py-2.5 px-3 min-w-[110px]">Lớp / Định danh</th>
+                        <th className="py-2.5 px-3 text-center">Thời gian nộp</th>
+                        <th className="py-2.5 px-3 text-center">Số câu đúng</th>
+                        <th className="py-2.5 px-3 text-center">Điểm số (/10)</th>
+                        <th className="py-2.5 px-3 text-center">Xếp loại</th>
+                        <th className="py-2.5 px-3 text-center">Thao tác</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-slate-700">
+                      {filteredSubs.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="py-8 text-center text-slate-400">
+                            Chưa có học sinh nào nộp bài hoặc không tìm thấy kết quả phù hợp.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredSubs.map((sub, idx) => {
+                          const scoreNum = sub.score;
+                          const rank = scoreNum >= 8.0 ? 'Giỏi' : scoreNum >= 6.5 ? 'Khá' : scoreNum >= 5.0 ? 'Trung bình' : 'Chưa đạt';
+                          const rankColor = scoreNum >= 8.0
+                            ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                            : scoreNum >= 6.5
+                            ? 'bg-blue-100 text-blue-800 border-blue-300'
+                            : scoreNum >= 5.0
+                            ? 'bg-amber-100 text-amber-800 border-amber-300'
+                            : 'bg-rose-100 text-rose-800 border-rose-300';
+
+                          return (
+                            <tr key={sub.id} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="py-3 px-3 text-center font-mono text-slate-400 font-bold">
+                                {idx + 1}
+                              </td>
+
+                              <td className="py-3 px-3">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-teal-500 to-emerald-400 text-white font-black text-xs flex items-center justify-center shrink-0">
+                                    {sub.studentName.charAt(0)}
+                                  </div>
+                                  <div className="font-bold text-slate-900">{sub.studentName}</div>
+                                </div>
+                              </td>
+
+                              <td className="py-3 px-3 text-slate-600 font-mono text-[11px]">
+                                {sub.studentInfo || activeStatsSession.className || 'Khối 12'}
+                              </td>
+
+                              <td className="py-3 px-3 text-center text-slate-500 text-[11px] font-mono">
+                                {sub.submittedAt}
+                              </td>
+
+                              <td className="py-3 px-3 text-center">
+                                <span className="bg-slate-100 text-slate-800 px-2 py-0.5 rounded font-mono font-bold">
+                                  {sub.correctAnswersCount}/{sub.totalQuestions}
+                                </span>
+                              </td>
+
+                              <td className="py-3 px-3 text-center">
+                                <span className="text-base font-black text-slate-900 font-mono">
+                                  {sub.score.toFixed(2)}
+                                </span>
+                              </td>
+
+                              <td className="py-3 px-3 text-center">
+                                <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold border ${rankColor}`}>
+                                  {rank}
+                                </span>
+                              </td>
+
+                              <td className="py-3 px-3 text-center">
+                                <div className="inline-flex items-center gap-1.5">
+                                  <button
+                                    onClick={() => {
+                                      soundEffects.playClick();
+                                      setInspectingSub(sub);
+                                    }}
+                                    className="px-2 py-1 text-[11px] font-bold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 cursor-pointer"
+                                    title="Xem chi tiết các câu hỏi và đáp án học sinh đã chọn"
+                                  >
+                                    Xem bài
+                                  </button>
+
+                                  <button
+                                    onClick={() => {
+                                      soundEffects.playClick();
+                                      if (confirm(`Cấp quyền cho học sinh "${sub.studentName}" thi lại từ đầu?`)) {
+                                        onResetStudentAttempts?.(activeStatsSession.id, sub.studentName);
+                                      }
+                                    }}
+                                    className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg cursor-pointer transition-colors"
+                                    title="Cho phép học sinh thi lại"
+                                  >
+                                    <RotateCcw className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* MODAL: XEM CHI TIẾT BÀI LÀM CỦA HỌC SINH */}
+      {inspectingSub && (() => {
+        const sessionQuestions = activeStatsSession?.questions || quizzes.find((q) => q.id === activeStatsSession?.quizId || q.title === activeStatsSession?.title)?.questions || [];
+
+        return (
+          <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in">
+            <div className="bg-white rounded-3xl max-w-3xl w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 animate-in zoom-in-95 max-h-[92vh] flex flex-col">
+              {/* Header */}
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-teal-500 text-white flex items-center justify-center shadow-md">
+                    <UserCheck className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-base text-slate-900">
+                      Chi Tiết Bài Làm: {inspectingSub.studentName}
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Điểm số: <strong className="text-teal-700">{inspectingSub.score}/10đ</strong> • Đúng: {inspectingSub.correctAnswersCount}/{inspectingSub.totalQuestions} câu • Nộp lúc: {inspectingSub.submittedAt}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setInspectingSub(null)}
+                  className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Questions list */}
+              <div className="overflow-y-auto space-y-3.5 pr-1">
+                {sessionQuestions.length === 0 ? (
+                  <div className="py-8 text-center text-slate-400 text-xs">
+                    Không tìm thấy dữ liệu câu hỏi chi tiết của phiên này.
+                  </div>
+                ) : (
+                  sessionQuestions.map((q, qIdx) => {
+                    const studentAns = inspectingSub.answers?.[q.id];
+                    let isCorrect = false;
+
+                    if (!q.partType || q.partType === 'part1_choice') {
+                      isCorrect = studentAns === q.correctAnswer;
+                    } else if (q.partType === 'part3_short_answer') {
+                      const exp = (q.shortAnswerCorrect || '').trim().replace(/\./g, ',');
+                      const stud = (studentAns || '').toString().trim().replace(/\./g, ',');
+                      isCorrect = Boolean(stud && stud === exp);
+                    }
+
+                    return (
+                      <div
+                        key={q.id || qIdx}
+                        className={`p-3.5 rounded-2xl border text-xs space-y-2 ${
+                          isCorrect
+                            ? 'bg-emerald-50/60 border-emerald-200'
+                            : studentAns
+                            ? 'bg-rose-50/60 border-rose-200'
+                            : 'bg-slate-50 border-slate-200'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="font-bold text-slate-900">
+                            Câu {qIdx + 1}: <span className="font-normal text-slate-800">{q.content}</span>
+                          </div>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+                              isCorrect
+                                ? 'bg-emerald-200/80 text-emerald-900'
+                                : studentAns
+                                ? 'bg-rose-200/80 text-rose-900'
+                                : 'bg-slate-200 text-slate-700'
+                            }`}
+                          >
+                            {isCorrect ? '✓ Đúng' : studentAns ? '✗ Sai' : 'Chưa làm'}
+                          </span>
+                        </div>
+
+                        {/* Options if Part 1 */}
+                        {q.options && q.options.length > 0 && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-1">
+                            {q.options.map((opt) => {
+                              const isStudentSelected = studentAns === opt.key;
+                              const isTheCorrectKey = q.correctAnswer === opt.key || opt.isCorrect;
+
+                              return (
+                                <div
+                                  key={opt.key}
+                                  className={`p-2 rounded-xl border text-[11px] flex items-center justify-between ${
+                                    isTheCorrectKey
+                                      ? 'bg-emerald-100 border-emerald-400 text-emerald-900 font-bold'
+                                      : isStudentSelected
+                                      ? 'bg-rose-100 border-rose-400 text-rose-900 font-semibold'
+                                      : 'bg-white border-slate-200 text-slate-700'
+                                  }`}
+                                >
+                                  <span>
+                                    <strong>{opt.key}.</strong> {opt.text}
+                                  </span>
+                                  {isStudentSelected && (
+                                    <span className="text-[10px] font-bold text-slate-700 ml-1">
+                                      (HS chọn)
+                                    </span>
+                                  )}
+                                  {isTheCorrectKey && (
+                                    <span className="text-[10px] font-bold text-emerald-800 ml-1">
+                                      (Đáp án đúng)
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* Short answer if Part 3 */}
+                        {q.partType === 'part3_short_answer' && (
+                          <div className="flex flex-wrap items-center gap-3 text-[11px] pt-1">
+                            <div>
+                              Học sinh điền:{' '}
+                              <strong className={isCorrect ? 'text-emerald-700' : 'text-rose-700'}>
+                                {studentAns || '(Chưa điền)'}
+                              </strong>
+                            </div>
+                            <div>
+                              Đáp án chuẩn: <strong className="text-emerald-800">{q.shortAnswerCorrect}</strong>
+                            </div>
+                          </div>
+                        )}
+
+                        {q.explanation && (
+                          <div className="p-2 bg-white/80 rounded-xl text-[11px] text-slate-600 border border-slate-200/70">
+                            💡 <strong>Hướng dẫn giải:</strong> {q.explanation}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* MODAL: CÀI ĐẶT GIAO ĐỀ THI & QUY CHẾ ĐIỂM SỐ (WORLD-CLASS CONFIGURATION MODAL) */}
       {configModalSession && (() => {

@@ -515,6 +515,8 @@ export default function App() {
                 <OnlineSessionsView
                   sessions={sessions}
                   quizzes={quizzes}
+                  submissions={submissions}
+                  classrooms={classrooms}
                   onCreateSession={() => setIsCreateQuizModalOpen(true)}
                   onOpenLiveMonitor={() => setCurrentTab('live-monitor')}
                   onOpenAttendanceSummary={(sess) => {
@@ -553,6 +555,23 @@ export default function App() {
                     const updatedSessions = sessions.map((s) => (s.id === updatedSess.id ? updatedSess : s));
                     setSessions(updatedSessions);
                     triggerAutoBackup(quizzes, classrooms, updatedSessions);
+                  }}
+                  onResetStudentAttempts={(sessId, studentName) => {
+                    try {
+                      localStorage.removeItem(`testonline_attempts_${sessId}_${studentName.trim()}`);
+                      setSubmissions((prev) =>
+                        prev.filter(
+                          (s) =>
+                            !(
+                              s.sessionId === sessId &&
+                              s.studentName.trim().toLowerCase() === studentName.trim().toLowerCase()
+                            )
+                        )
+                      );
+                      soundEffects.playCorrect();
+                    } catch {
+                      // ignore
+                    }
                   }}
                 />
               )}

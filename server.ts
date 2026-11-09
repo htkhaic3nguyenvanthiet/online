@@ -216,6 +216,100 @@ app.get('/api/exam/:id', (req, res) => {
   });
 });
 
+// Student exam submission endpoint: receives student test results in real-time
+const SUBMISSIONS_FILE = path.join(DATA_DIR, 'submissions.json');
+
+function getAllSubmissions(): any[] {
+  if (fs.existsSync(SUBMISSIONS_FILE)) {
+    try {
+      const content = fs.readFileSync(SUBMISSIONS_FILE, 'utf-8');
+      return JSON.parse(content);
+    } catch {
+      // ignore
+    }
+  }
+  return [];
+}
+
+function saveAllSubmissions(list: any[]) {
+  try {
+    fs.writeFileSync(SUBMISSIONS_FILE, JSON.stringify(list.slice(0, 5000), null, 2), 'utf-8');
+  } catch (err) {
+    console.error('Error saving submissions:', err);
+  }
+}
+
+app.post('/api/exam/submit', (req, res) => {
+  const submission = req.body;
+  if (!submission || !submission.sessionId || !submission.studentName) {
+    return res.status(400).json({ success: false, error: 'Thiếu thông tin bài thi' });
+  }
+
+  const existing = getAllSubmissions();
+  const index = existing.findIndex((s: any) => s.id === submission.id);
+  if (index >= 0) {
+    existing[index] = submission;
+  } else {
+    existing.unshift(submission);
+  }
+  saveAllSubmissions(existing);
+
+  // Also update active cloud data
+  try {
+    const cloud = getCloudData();
+    if (cloud) {
+      if (!cloud.submissions) cloud.submissions = [];
+      const cIdx = cloud.submissions.findIndex((s: any) => s.id === submission.id);
+      if (cIdx >= 0) {
+        cloud.submissions[cIdx] = submission;
+      } else {
+        cloud.submissions.unshift(submission);
+      }
+      saveCloudData(cloud);
+    }
+  } catch (err) {
+    console.error('Cloud update submission err:', err);
+  }
+
+  return res.json({ success: true, submission, message: 'Đã lưu kết quả thi thành công' });
+});
+
+app.get('/api/exam/submissions', (req, res) => {
+  const sessionId = req.query.sessionId as string;
+  let all = getAllSubmissions();
+
+  // If server file is empty, check cloud store
+  if (all.length === 0) {
+    const cloud = getCloudData();
+    if (cloud?.submissions) {
+      all = cloud.submissions;
+    }
+  }
+
+  if (sessionId) {
+    const filtered = all.filter((s: any) => s.sessionId === sessionId);
+    return res.json({ success: true, count: filtered.length, submissions: filtered });
+  }
+
+  return res.json({ success: true, count: all.length, submissions: all });
+});
+
+app.post('/api/exam/reset-attempt', (req, res) => {
+  const { sessionId, studentName } = req.body;
+  if (!sessionId || !studentName) {
+    return res.status(400).json({ success: false, error: 'Thiếu sessionId hoặc studentName' });
+  }
+
+  let all = getAllSubmissions();
+  all = all.filter(
+    (s: any) =>
+      !(s.sessionId === sessionId && s.studentName.trim().toLowerCase() === studentName.trim().toLowerCase())
+  );
+  saveAllSubmissions(all);
+
+  return res.json({ success: true, message: `Đã xóa lượt thi của học sinh ${studentName}` });
+});
+
 // AI Generate Quiz Endpoint
 app.post('/api/ai/generate-quiz', async (req, res) => {
   try {
