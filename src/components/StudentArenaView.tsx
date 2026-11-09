@@ -85,13 +85,18 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
   const resolvedPart2PerQ = scoringConfig?.part2PointPerQuestion ?? 1.0;
   const resolvedPart3PerQ = scoringConfig?.part3PointPerQuestion ?? 0.25;
 
-  // Student Info
-  const [studentName, setStudentName] = useState('Nguyễn Thành Nam');
-  const [studentInfo, setStudentInfo] = useState('12A5 - SBD: 052');
+  // Student Info (Blank by default per requirement - student must fill in)
+  const [studentName, setStudentName] = useState('');
+  const [studentInfo, setStudentInfo] = useState('');
+  const [showInfoErrorModal, setShowInfoErrorModal] = useState(false);
 
-  // Attempt tracker persistence
-  const [attemptNumber, setAttemptNumber] = useState(1);
-  const [completedAttemptsCount, setCompletedAttemptsCount] = useState(0);
+  // Auto-next after 2s countdown state & refs
+  const [autoNextCountdown, setAutoNextCountdown] = useState<number | null>(null);
+  const autoNextTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const autoNextIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Session switching ref to prevent student stuck bug
+  const prevSessionIdRef = useRef<string>(resolvedSessionId);
 
   // Test state: Strictly teacher-authored questions with randomization (shuffling question order and answer options per attempt/session)
   const shuffleArray = <T,>(array: T[]): T[] => {
@@ -102,6 +107,10 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
     }
     return arr;
   };
+
+  // Attempt tracker persistence
+  const [completedAttemptsCount, setCompletedAttemptsCount] = useState(0);
+  const [attemptNumber, setAttemptNumber] = useState(1);
 
   const baseTeacherQuestions = useMemo(() => {
     if (customQuestions && customQuestions.length > 0) {
@@ -169,9 +178,6 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
   const [aiExplanationText, setAiExplanationText] = useState<string | null>(null);
   const [aiExplainedQuestionId, setAiExplainedQuestionId] = useState<string | null>(null);
 
-
-
-  // Load past attempts count
   useEffect(() => {
     try {
       const storageKey = `testonline_attempts_${resolvedSessionId}_${studentName.trim()}`;
@@ -183,28 +189,53 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
     }
   }, [resolvedSessionId, studentName]);
 
-  // Network monitor for 4G/5G resilience
+  // 1. Session Switching Reset (Fix Requirement 1: Prevent Student Stuck Bug)
+  useEffect(() => {
+    if (prevSessionIdRef.current !== resolvedSessionId) {
+      prevSessionIdRef.current = resolvedSessionId;
+      cancelAutoNextTimer();
+      setStep('landing');
+      setUserAnswers({});
+      setCurrentIndex(0);
+      setStreak(0);
+      setFinalSubmission(null);
+      setIsDisqualified(false);
+      setDisqualificationReason(null);
+      setTabSwitchCount(0);
+      setCheatLogs([]);
+      setSecondsRemaining(resolvedDurationMinutes * 60);
+      setShowReviewMode(false);
+      setShowCompletionSummaryModal(false);
+      setShowSubmitConfirmModal(false);
+      setShowViolationModal(false);
+    }
+  }, [resolvedSessionId, resolvedDurationMinutes]);
+
+  // 2. Draft restoration for active session (Phone Call / Refresh / App Switch Resilience)
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Restore draft if available for active session
     try {
       const saved = localStorage.getItem(`testonline_draft_${resolvedSessionId}`);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed && Date.now() - parsed.timestamp < 3600000 * 2) {
-          setUserAnswers(parsed.userAnswers || {});
-          setCurrentIndex(parsed.currentIndex || 0);
-          setStreak(parsed.streak || 0);
-          setStudentName(parsed.studentName || studentName);
-          setStudentInfo(parsed.studentInfo || studentInfo);
-          setTabSwitchCount(parsed.tabSwitchCount || 0);
-          setCheatLogs(parsed.cheatLogs || []);
-          if (parsed.secondsRemaining && parsed.secondsRemaining > 0) {
-            setSecondsRemaining(parsed.secondsRemaining);
+        if (parsed && parsed.sessionId === resolvedSessionId && Date.now() - parsed.timestamp < 3600000 * 2) {
+          const elapsedSec = Math.floor((Date.now() - parsed.timestamp) / 1000);
+          const rem = Math.max(0, (parsed.secondsRemaining || 0) - elapsedSec);
+
+          if (rem > 0 && parsed.userAnswers && Object.keys(parsed.userAnswers).length > 0) {
+            setUserAnswers(parsed.userAnswers || {});
+            setCurrentIndex(parsed.currentIndex || 0);
+            setStreak(parsed.streak || 0);
+            if (parsed.studentName) setStudentName(parsed.studentName);
+            if (parsed.studentInfo) setStudentInfo(parsed.studentInfo);
+            setTabSwitchCount(parsed.tabSwitchCount || 0);
+            setCheatLogs(parsed.cheatLogs || []);
+            setSecondsRemaining(rem);
+            setStep('testing'); // Resume live test after phone call or page refresh seamlessly!
           }
         }
       }
@@ -218,30 +249,49 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
     };
   }, [resolvedSessionId]);
 
-  // Autosave during exam
+  // 3. Continuous live draft saving for Phone Calls, App Switches, Page Hides & Refreshes
   useEffect(() => {
-    if (step === 'testing') {
-      try {
-        localStorage.setItem(
-          `testonline_draft_${resolvedSessionId}`,
-          JSON.stringify({
-            quizTitle: resolvedTitle,
-            studentName,
-            studentInfo,
-            currentIndex,
-            userAnswers,
-            streak,
-            secondsRemaining,
-            tabSwitchCount,
-            cheatLogs,
-            timestamp: Date.now()
-          })
-        );
-      } catch {
-        // ignore
+    const handleSaveLiveDraft = () => {
+      if (step === 'testing') {
+        try {
+          localStorage.setItem(
+            `testonline_draft_${resolvedSessionId}`,
+            JSON.stringify({
+              sessionId: resolvedSessionId,
+              quizTitle: resolvedTitle,
+              studentName,
+              studentInfo,
+              currentIndex,
+              userAnswers,
+              streak,
+              secondsRemaining,
+              tabSwitchCount,
+              cheatLogs,
+              timestamp: Date.now()
+            })
+          );
+        } catch {
+          // ignore
+        }
       }
-    }
-  }, [step, currentIndex, userAnswers, streak, secondsRemaining, tabSwitchCount, cheatLogs, resolvedSessionId, resolvedTitle, studentName, studentInfo]);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        handleSaveLiveDraft();
+      }
+    };
+
+    window.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', handleSaveLiveDraft);
+    window.addEventListener('beforeunload', handleSaveLiveDraft);
+
+    return () => {
+      window.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', handleSaveLiveDraft);
+      window.removeEventListener('beforeunload', handleSaveLiveDraft);
+    };
+  }, [step, resolvedSessionId, resolvedTitle, studentName, studentInfo, currentIndex, userAnswers, streak, secondsRemaining, tabSwitchCount, cheatLogs]);
 
   // Countdown timer
   useEffect(() => {
@@ -335,6 +385,43 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
     return `${hours.toString().padStart(2, '0')} : ${minutes.toString().padStart(2, '0')} : ${seconds.toString().padStart(2, '0')}`;
   };
 
+  const cancelAutoNextTimer = () => {
+    if (autoNextTimerRef.current) {
+      clearTimeout(autoNextTimerRef.current);
+      autoNextTimerRef.current = null;
+    }
+    if (autoNextIntervalRef.current) {
+      clearInterval(autoNextIntervalRef.current);
+      autoNextIntervalRef.current = null;
+    }
+    setAutoNextCountdown(null);
+  };
+
+  const startAutoNextTimer = () => {
+    cancelAutoNextTimer();
+    if (currentIndex >= questions.length - 1) return;
+
+    setAutoNextCountdown(2);
+    let left = 2;
+    autoNextIntervalRef.current = setInterval(() => {
+      left -= 1;
+      if (left <= 0) {
+        if (autoNextIntervalRef.current) clearInterval(autoNextIntervalRef.current);
+        setAutoNextCountdown(null);
+      } else {
+        setAutoNextCountdown(left);
+      }
+    }, 1000);
+
+    autoNextTimerRef.current = setTimeout(() => {
+      cancelAutoNextTimer();
+      if (currentIndex < questions.length - 1) {
+        soundEffects.playClick();
+        setCurrentIndex((prev) => prev + 1);
+      }
+    }, 2000);
+  };
+
   const handleSelectOption = (key: OptionKey) => {
     soundEffects.playClick();
     const updated = { ...userAnswers, [currentQ.id]: key };
@@ -345,6 +432,11 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
       setStreak((s) => s + 1);
     } else {
       setStreak(0);
+    }
+
+    // Auto-advance to next question after 2 seconds if not on last question (REQUIREMENT 4)
+    if (currentIndex < questions.length - 1) {
+      startAutoNextTimer();
     }
   };
 
@@ -705,8 +797,9 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
           ) : (
             <button
               onClick={() => {
-                if (!studentName.trim()) {
-                  alert('Vui lòng nhập Họ và tên trước khi bắt đầu làm bài!');
+                if (!studentName.trim() || !studentInfo.trim()) {
+                  soundEffects.playWarning();
+                  setShowInfoErrorModal(true);
                   return;
                 }
                 soundEffects.playClick();
@@ -718,6 +811,29 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
             </button>
           )}
         </div>
+
+        {/* INFO REQUIRED ERROR MODAL */}
+        {showInfoErrorModal && (
+          <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-[#0b383f] border-2 border-rose-500 rounded-3xl max-w-sm w-full p-6 text-center text-white space-y-4 shadow-2xl">
+              <div className="w-14 h-14 bg-rose-500/20 text-rose-400 rounded-2xl flex items-center justify-center mx-auto border border-rose-400/50">
+                <AlertTriangle className="w-8 h-8 animate-bounce text-rose-400" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-base text-rose-300">Chưa điền đủ thông tin thí sinh!</h3>
+                <p className="text-xs text-slate-200 mt-2 leading-relaxed">
+                  Phần <strong className="text-amber-300 font-bold">Họ và tên</strong> và <strong className="text-amber-300 font-bold">Lớp / Số báo danh</strong> đang để trống. Bạn bắt buộc phải tự nhập đầy đủ thông tin để giáo viên ghi nhận kết quả điểm thi!
+                </p>
+              </div>
+              <button
+                onClick={() => setShowInfoErrorModal(false)}
+                className="btn-3d btn-3d-teal w-full py-3 rounded-xl font-bold text-xs cursor-pointer shadow-lg"
+              >
+                Đã hiểu, tôi sẽ nhập ngay!
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -805,13 +921,14 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
           e.preventDefault();
           soundEffects.playWarning();
         }}
-        className="min-h-[85vh] bg-gradient-to-b from-[#0d5c58] via-[#0a4946] to-[#073634] border border-teal-300/30 rounded-3xl p-4 sm:p-6 text-white flex flex-col justify-between shadow-2xl relative select-none"
+        className="h-[100dvh] max-h-[100dvh] bg-gradient-to-b from-[#0d5c58] via-[#0a4946] to-[#073634] border border-teal-300/30 rounded-3xl p-3 sm:p-5 text-white flex flex-col justify-between shadow-2xl relative select-none overflow-hidden"
       >
         {/* Top Header Bar */}
-        <div className="flex items-center justify-between gap-2 pb-3 border-b border-teal-300/30">
+        <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-teal-300/30 shrink-0">
           {/* Power/Exit button */}
           <button
             onClick={() => {
+              cancelAutoNextTimer();
               soundEffects.playClick();
               if (isDirectStudentMode) {
                 if (confirm('Nếu thoát bây giờ, bài thi của bạn sẽ không được nộp! Bạn có chắc muốn quay lại sảnh chờ bài thi này?')) {
@@ -823,15 +940,15 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                 }
               }
             }}
-            className="w-10 h-10 rounded-xl bg-white/20 hover:bg-white/30 border border-white/30 flex items-center justify-center text-white cursor-pointer transition-colors"
+            className="w-9 h-9 rounded-xl bg-white/20 hover:bg-white/30 border border-white/30 flex items-center justify-center text-white cursor-pointer transition-colors"
             title="Thoát phòng thi"
           >
-            <Power className="w-5 h-5 stroke-[2.5]" />
+            <Power className="w-4 h-4 stroke-[2.5]" />
           </button>
 
           {/* Student identifier & Network Status */}
           <div className="text-center flex flex-col items-center">
-            <span className="font-extrabold text-sm sm:text-base text-white tracking-wide">
+            <span className="font-extrabold text-xs sm:text-sm text-white tracking-wide">
               {studentName} • {studentInfo}
             </span>
             <div className="flex items-center gap-2 mt-0.5">
@@ -900,7 +1017,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
         </div>
 
         {/* Question Matrix Navigation Palette (World-class online exam feature) */}
-        <div className="mt-2 py-2 px-3 bg-black/25 rounded-2xl flex items-center justify-between gap-2 overflow-x-auto">
+        <div className="mt-2 py-1.5 px-3 bg-black/25 rounded-2xl flex items-center justify-between gap-2 overflow-x-auto shrink-0">
           <div className="flex items-center gap-1 text-[11px] font-bold text-teal-100 whitespace-nowrap">
             <span>Mục lục câu hỏi ({answeredCount}/{questions.length}):</span>
           </div>
@@ -917,6 +1034,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                 <button
                   key={q.id}
                   onClick={() => {
+                    cancelAutoNextTimer();
                     soundEffects.playClick();
                     setCurrentIndex(idx);
                   }}
@@ -939,7 +1057,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
         </div>
 
         {/* Question Statement Box */}
-        <div className="my-3 bg-[#052b2d]/70 backdrop-blur-xs border border-teal-300/30 rounded-2xl p-5 text-white shadow-lg text-center">
+        <div className="my-2 bg-[#052b2d]/70 backdrop-blur-xs border border-teal-300/30 rounded-2xl p-4 text-white shadow-lg text-center shrink-0">
           <div className="text-xs font-bold text-teal-200 uppercase tracking-wider mb-1 flex items-center justify-center gap-2">
             <span className="bg-teal-800/60 px-2 py-0.5 rounded-md font-mono text-[10px] text-teal-100">
               {currentQ.partType === 'part2_true_false'
@@ -956,8 +1074,8 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
             )}
           </div>
           <h2
-            className="font-bold text-slate-50 leading-relaxed"
-            style={{ fontSize: `${18 + fontSizeOffset}px` }}
+            className="font-bold text-slate-50 leading-relaxed max-h-28 overflow-y-auto"
+            style={{ fontSize: `${17 + fontSizeOffset}px` }}
           >
             {currentQ.content}
           </h2>
@@ -965,13 +1083,13 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
 
         {/* 1. PHẦN II: TRẮC NGHIỆM ĐÚNG / SAI (a, b, c, d) */}
         {currentQ.partType === 'part2_true_false' && currentQ.subItems && (
-          <div className="space-y-2.5 my-2 flex-1">
+          <div className="space-y-2 my-1 flex-1 overflow-y-auto pr-1">
             {currentQ.subItems.map((si) => {
               const selectedValue = userAnswers[currentQ.id]?.[si.key];
               return (
                 <div
                   key={si.key}
-                  className="bg-[#052b2d]/60 backdrop-blur-xs border border-teal-300/20 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md"
+                  className="bg-[#052b2d]/60 backdrop-blur-xs border border-teal-300/20 rounded-2xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shadow-md"
                 >
                   <div className="flex-1 text-left">
                     <span className="font-black text-amber-300 text-sm mr-2">{si.key})</span>
@@ -986,7 +1104,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                     <button
                       type="button"
                       onClick={() => handleToggleSubItem(si.key, true)}
-                      className={`px-4 py-2 rounded-xl font-black text-xs cursor-pointer transition-all ${
+                      className={`px-4 py-1.5 rounded-xl font-black text-xs cursor-pointer transition-all ${
                         selectedValue === true
                           ? 'btn-3d btn-3d-emerald ring-2 ring-white scale-105 shadow-lg'
                           : 'bg-white/20 hover:bg-white/30 text-white'
@@ -997,7 +1115,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                     <button
                       type="button"
                       onClick={() => handleToggleSubItem(si.key, false)}
-                      className={`px-4 py-2 rounded-xl font-black text-xs cursor-pointer transition-all ${
+                      className={`px-4 py-1.5 rounded-xl font-black text-xs cursor-pointer transition-all ${
                         selectedValue === false
                           ? 'bg-rose-600 hover:bg-rose-500 text-white ring-2 ring-white scale-105 shadow-lg'
                           : 'bg-white/20 hover:bg-white/30 text-white'
@@ -1014,7 +1132,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
 
         {/* 2. PHẦN III: TRẢ LỜI NGẮN (CHỈ CẦN Ô NHẬP ĐÁP ÁN ĐỂ HỌC SINH GHI SỐ VÀO) */}
         {currentQ.partType === 'part3_short_answer' && (
-          <div className="bg-[#052b2d]/70 backdrop-blur-xs border border-teal-300/30 rounded-2xl p-8 text-center max-w-md mx-auto w-full my-4 shadow-xl flex-1 flex flex-col justify-center items-center gap-4">
+          <div className="bg-[#052b2d]/70 backdrop-blur-xs border border-teal-300/30 rounded-2xl p-6 text-center max-w-md mx-auto w-full my-2 shadow-xl flex-1 flex flex-col justify-center items-center gap-3">
             <span className="text-xs text-teal-200 font-bold uppercase tracking-wider">
               Nhập câu trả lời ngắn:
             </span>
@@ -1025,14 +1143,14 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
               onChange={(e) => handleShortAnswerChange(e.target.value)}
               placeholder="Nhập đáp án..."
               autoFocus
-              className="w-56 text-center text-3xl font-black font-mono tracking-widest bg-white text-slate-900 border-4 border-amber-300 rounded-2xl py-3 px-4 shadow-inner focus:outline-none focus:ring-4 focus:ring-teal-300 transition-all placeholder:text-slate-300 placeholder:text-lg placeholder:font-normal"
+              className="w-56 text-center text-3xl font-black font-mono tracking-widest bg-white text-slate-900 border-4 border-amber-300 rounded-2xl py-2.5 px-4 shadow-inner focus:outline-none focus:ring-4 focus:ring-teal-300 transition-all placeholder:text-slate-300 placeholder:text-lg placeholder:font-normal"
             />
           </div>
         )}
 
         {/* 3. PHẦN I: TRẮC NGHIỆM 4 PHƯƠNG ÁN LỰA CHỌN (A, B, C, D) */}
         {(!currentQ.partType || currentQ.partType === 'part1_choice') && currentQ.options && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 my-2 flex-1 items-stretch">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 my-1 flex-1 overflow-y-auto pr-1 items-stretch">
             {currentQ.options.map((opt) => {
               const isSelected = userAnswers[currentQ.id] === opt.key;
               let colorClass = 'btn-3d-blue';
@@ -1044,11 +1162,11 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                 <button
                   key={opt.key}
                   onClick={() => handleSelectOption(opt.key)}
-                  className={`btn-3d ${colorClass} p-5 rounded-2xl flex flex-col items-center justify-center text-center cursor-pointer min-h-[135px] relative transition-all ${
+                  className={`btn-3d ${colorClass} p-4 rounded-2xl flex flex-col items-center justify-center text-center cursor-pointer min-h-[110px] relative transition-all ${
                     isSelected ? 'ring-4 ring-white scale-102 shadow-2xl brightness-115' : 'opacity-95'
                   }`}
                 >
-                  <div className="w-10 h-10 rounded-full bg-white/25 flex items-center justify-center font-black text-lg mb-2 shadow-inner">
+                  <div className="w-9 h-9 rounded-full bg-white/25 flex items-center justify-center font-black text-base mb-1.5 shadow-inner">
                     {opt.key}
                   </div>
                   <span
@@ -1059,7 +1177,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                   </span>
 
                   {isSelected && (
-                    <div className="absolute top-2 right-2 bg-white text-emerald-700 w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs shadow-md">
+                    <div className="absolute top-2 right-2 bg-white text-emerald-700 w-5 h-5 rounded-full flex items-center justify-center font-bold text-xs shadow-md">
                       ✓
                     </div>
                   )}
@@ -1069,12 +1187,26 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
           </div>
         )}
 
+        {/* 2-SECOND AUTO-NEXT COUNTDOWN BANNER (REQUIREMENT 4) */}
+        {autoNextCountdown !== null && (
+          <div className="py-1 px-4 bg-amber-400 text-slate-950 rounded-full font-bold text-xs flex items-center justify-center gap-2 animate-pulse mx-auto my-1 shadow-lg shrink-0">
+            <span>⏱ Tự động chuyển sang câu tiếp theo sau <strong>{autoNextCountdown}s</strong>...</span>
+            <button
+              onClick={cancelAutoNextTimer}
+              className="underline text-[10px] bg-slate-950 text-white px-2 py-0.5 rounded-md hover:bg-slate-800 cursor-pointer"
+            >
+              Hủy tự chuyển
+            </button>
+          </div>
+        )}
+
         {/* Bottom Action Bar: Navigation + Strict AI Lock + Submit Button */}
-        <div className="pt-3 flex flex-wrap items-center justify-between gap-3 border-t border-teal-300/30 mt-2">
+        <div className="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-teal-300/30 mt-1 shrink-0">
           {/* Left: Previous & Next question controls */}
           <div className="flex items-center gap-1.5">
             <button
               onClick={() => {
+                cancelAutoNextTimer();
                 if (currentIndex > 0) {
                   soundEffects.playClick();
                   setCurrentIndex((i) => i - 1);
@@ -1091,6 +1223,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
 
             <button
               onClick={() => {
+                cancelAutoNextTimer();
                 if (currentIndex < questions.length - 1) {
                   soundEffects.playClick();
                   setCurrentIndex((i) => i + 1);

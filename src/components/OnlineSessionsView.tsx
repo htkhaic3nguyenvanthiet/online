@@ -197,6 +197,95 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
         </button>
       </div>
 
+      {/* LARGE PROMINENT TEACHER SHARE LINK BOX FOR ACTIVE SESSION (REQUIREMENT 2) */}
+      {sessions.length > 0 && (() => {
+        const activeSession = sessions.find((s) => s.status === 'active') || sessions[0];
+        const activeQuiz = quizzes.find((q) => q.id === activeSession.quizId || q.title === activeSession.title);
+        const subjectName = activeQuiz?.subject || 'Công nghệ 12';
+        const durationMins = activeSession.durationMinutes || 50;
+        const qCount = activeSession.questionCount || (activeQuiz?.questions?.length) || 28;
+        const shareLink = getStudentExamShareUrl(activeSession.id);
+        const fullShareText = `📌 BÀI KIỂM TRA TRỰC TUYẾN - THPT MANG THÍT\n📘 Môn học: ${subjectName}\n📝 Bài kiểm tra: ${activeSession.title}\n⏱ Thời gian làm bài: ${durationMins} phút (${qCount} câu hỏi)\n🏫 Đối tượng: ${activeSession.className || 'Toàn bộ học sinh'}\n👉 Học sinh bấm vào liên kết bên dưới để vào thi ngay:\n${shareLink}`;
+
+        return (
+          <div className="bg-gradient-to-r from-[#062c30] via-[#094046] to-[#0d555c] rounded-3xl p-5 sm:p-6 text-white shadow-xl border-2 border-teal-400/50 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-teal-400/20 border border-teal-300/40 flex items-center justify-center text-teal-300 shrink-0">
+                  <Share2 className="w-6 h-6 animate-pulse" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="bg-amber-400 text-slate-950 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-xs">
+                      Nổi bật • Giao bài 1-Click
+                    </span>
+                    <span className="text-xs text-teal-200 font-mono">Mã phòng: {activeSession.id}</span>
+                  </div>
+                  <h2 className="text-lg font-black text-white mt-1 leading-snug">
+                    {activeSession.title}
+                  </h2>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => {
+                    soundEffects.playClick();
+                    navigator.clipboard?.writeText(fullShareText);
+                    setCopiedId('full-' + activeSession.id);
+                    setTimeout(() => setCopiedId(null), 2500);
+                  }}
+                  className="btn-3d btn-3d-emerald px-5 py-3 text-xs sm:text-sm rounded-xl font-black flex items-center gap-2 cursor-pointer shadow-lg text-white"
+                >
+                  {copiedId === 'full-' + activeSession.id ? (
+                    <>
+                      <Check className="w-4 h-4 text-white" />
+                      <span>Đã sao chép nội dung & link giao!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4" />
+                      <span>Sao chép nội dung & link giao bài</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Structured Details Badge Row */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+              <div className="bg-black/30 border border-teal-300/20 rounded-xl p-2.5 flex items-center gap-2">
+                <span className="text-teal-300 font-bold">📘 Môn:</span>
+                <span className="font-extrabold text-white truncate">{subjectName}</span>
+              </div>
+              <div className="bg-black/30 border border-teal-300/20 rounded-xl p-2.5 flex items-center gap-2">
+                <span className="text-amber-300 font-bold">⏱ Thời gian:</span>
+                <span className="font-extrabold text-white">{durationMins} phút</span>
+              </div>
+              <div className="bg-black/30 border border-teal-300/20 rounded-xl p-2.5 flex items-center gap-2">
+                <span className="text-blue-300 font-bold">📝 Số câu:</span>
+                <span className="font-extrabold text-white">{qCount} câu</span>
+              </div>
+              <div className="bg-black/30 border border-teal-300/20 rounded-xl p-2.5 flex items-center gap-2">
+                <span className="text-emerald-300 font-bold">🏫 Lớp:</span>
+                <span className="font-extrabold text-white truncate">{activeSession.className || 'Tất cả lớp'}</span>
+              </div>
+            </div>
+
+            {/* Directly visible styled Link & Preview box */}
+            <div className="bg-black/40 border border-teal-400/30 rounded-2xl p-3.5 space-y-2">
+              <div className="flex items-center justify-between text-xs text-teal-200">
+                <span className="font-bold">Nội dung xem trước khi gửi Zalo/Facebook cho học sinh:</span>
+                <span className="text-[10px] text-teal-300/80">Học sinh bấm vào là thi trực tiếp</span>
+              </div>
+              <div className="font-mono text-xs text-teal-100 bg-slate-950/80 p-3 rounded-xl border border-teal-500/30 whitespace-pre-line leading-relaxed select-all">
+                {fullShareText}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Filter Bar */}
       <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs grid grid-cols-1 md:grid-cols-3 gap-3">
         <div>
