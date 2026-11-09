@@ -31,6 +31,51 @@ const ai = new GoogleGenAI({
 const DATA_DIR = path.join(__dirname, '.data');
 const SYNC_KEYS_DIR = path.join(DATA_DIR, 'sync_keys');
 const CLOUD_STORE_FILE = path.join(DATA_DIR, 'cloud_store.json');
+const PUBLISHED_EXAMS_FILE = path.join(DATA_DIR, 'published_exams.json');
+
+interface PublishedExamRecord {
+  id: string;
+  title: string;
+  session?: any;
+  quiz?: any;
+  questions: any[];
+  publishedAt: string;
+}
+
+const publishedExamsMap = new Map<string, PublishedExamRecord>();
+
+function loadPublishedExamsFromDisk() {
+  if (fs.existsSync(PUBLISHED_EXAMS_FILE)) {
+    try {
+      const list: PublishedExamRecord[] = JSON.parse(fs.readFileSync(PUBLISHED_EXAMS_FILE, 'utf-8'));
+      if (Array.isArray(list)) {
+        for (const item of list) {
+          if (item.id) publishedExamsMap.set(item.id, item);
+          if (item.session?.id) publishedExamsMap.set(item.session.id, item);
+          if (item.session?.quizId) publishedExamsMap.set(item.session.quizId, item);
+          if (item.quiz?.id) publishedExamsMap.set(item.quiz.id, item);
+        }
+      }
+    } catch (e) {
+      console.error('Error loading published exams:', e);
+    }
+  }
+}
+loadPublishedExamsFromDisk();
+
+function savePublishedExamToDisk(record: PublishedExamRecord) {
+  publishedExamsMap.set(record.id, record);
+  if (record.session?.id) publishedExamsMap.set(record.session.id, record);
+  if (record.session?.quizId) publishedExamsMap.set(record.session.quizId, record);
+  if (record.quiz?.id) publishedExamsMap.set(record.quiz.id, record);
+
+  try {
+    const list = Array.from(new Set(Array.from(publishedExamsMap.values())));
+    fs.writeFileSync(PUBLISHED_EXAMS_FILE, JSON.stringify(list, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('Error saving published exams file:', err);
+  }
+}
 
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -113,6 +158,29 @@ function saveCloudData(data: any, syncKey?: string) {
 
     // Also update default active file for instant access
     fs.writeFileSync(CLOUD_STORE_FILE, content, 'utf-8');
+
+    // Automatically register all sessions with their questions into published exams registry
+    if (Array.isArray(data?.sessions)) {
+      for (const sess of data.sessions) {
+        const linkedQuiz = Array.isArray(data?.quizzes)
+          ? data.quizzes.find((q: any) => q.id === sess.quizId || q.title === sess.title)
+          : undefined;
+        const questions = (sess.questions && sess.questions.length > 0)
+          ? sess.questions
+          : (linkedQuiz?.questions || []);
+        if (sess.id) {
+          savePublishedExamToDisk({
+            id: sess.id,
+            title: sess.title || 'Bài kiểm tra trực tuyến',
+            session: { ...sess, questions },
+            quiz: linkedQuiz,
+            questions,
+            publishedAt: new Date().toISOString()
+          });
+        }
+      }
+    }
+
     return true;
   } catch (err) {
     console.error(`Error saving cloud store (${cleanKey}):`, err);
@@ -169,10 +237,83 @@ app.post('/api/cloud/sync', (req, res) => {
   });
 });
 
+// Dedicated Exam Publish Endpoint: immediately persists teacher's questions to memory & disk
+app.post('/api/exam/publish', (req, res) => {
+  const { session, quiz, questions } = req.body || {};
+  if (!session && !quiz) {
+    return res.status(400).json({ success: false, error: 'Thiếu thông tin phiên/đề thi' });
+  }
+
+  const examId = session?.id || quiz?.id || ('sess-' + Date.now());
+  const finalQuestions =
+    (questions && questions.length > 0)
+      ? questions
+      : (session?.questions && session.questions.length > 0)
+      ? session.questions
+      : (quiz?.questions && quiz.questions.length > 0)
+      ? quiz.questions
+      : [];
+
+  const record: PublishedExamRecord = {
+    id: examId,
+    title: session?.title || quiz?.title || 'Bài kiểm tra trực tuyến',
+    session: session ? { ...session, questions: finalQuestions } : undefined,
+    quiz: quiz ? { ...quiz, questions: finalQuestions } : undefined,
+    questions: finalQuestions,
+    publishedAt: new Date().toISOString(),
+  };
+
+  savePublishedExamToDisk(record);
+
+  // Also update cloud_store.json with this session so it appears across all stores
+  try {
+    const currentStore = getCloudData() || { version: '2.5.0', quizzes: [], sessions: [], submissions: [] };
+    if (session) {
+      currentStore.sessions = [record.session, ...(currentStore.sessions || []).filter((s: any) => s.id !== record.session.id)];
+    }
+    if (quiz) {
+      currentStore.quizzes = [record.quiz, ...(currentStore.quizzes || []).filter((q: any) => q.id !== record.quiz.id)];
+    }
+    saveCloudData(currentStore);
+  } catch {}
+
+  console.log(`[Exam Publisher] Successfully published exam [${examId}] with ${finalQuestions.length} real questions!`);
+  res.json({
+    success: true,
+    examId,
+    questionCount: finalQuestions.length,
+    message: `Đã xuất bản đề thi trực tuyến thành công (${finalQuestions.length} câu hỏi)!`,
+  });
+});
+
 // Student exam fetch endpoint: allows student devices to directly fetch questions from server
 app.get('/api/exam/:id', (req, res) => {
   const examId = req.params.id;
   if (!examId) return res.status(400).json({ success: false, error: 'Thiếu mã đề/phiên thi' });
+
+  // 1. Direct In-Memory Lookup: Instant response with 0ms lag
+  const directMatch = publishedExamsMap.get(examId) ||
+    Array.from(publishedExamsMap.values()).find(
+      (r) =>
+        r.id === examId ||
+        r.session?.id === examId ||
+        r.session?.quizId === examId ||
+        r.quiz?.id === examId ||
+        (r.title && r.title.toLowerCase().trim() === examId.toLowerCase().trim()) ||
+        examId.includes(r.id) ||
+        r.id.includes(examId)
+    );
+
+  if (directMatch && directMatch.questions && directMatch.questions.length > 0) {
+    return res.json({
+      success: true,
+      examId,
+      session: directMatch.session,
+      quiz: directMatch.quiz,
+      questions: directMatch.questions,
+      found: true,
+    });
+  }
 
   const syncKey = (req.query.syncKey as string) || (req.query.key as string);
 

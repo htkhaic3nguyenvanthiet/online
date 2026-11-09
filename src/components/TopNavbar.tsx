@@ -134,23 +134,6 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
             <span className="text-[10px] bg-white/20 text-white px-1 rounded-sm">Hot</span>
           </button>
 
-          {/* 500-Student Concurrency Simulator 3D Button */}
-          <button
-            onClick={() => {
-              soundEffects.playClick();
-              onToggle500Sim();
-            }}
-            className={`btn-3d px-3.5 py-1.5 text-xs rounded-lg flex items-center gap-1.5 cursor-pointer ${
-              is500SimActive
-                ? 'btn-3d-orange font-bold text-white'
-                : 'btn-3d-amber'
-            }`}
-            title="Kích hoạt giả lập 500 học sinh đồng thời nộp bài tự động không sập mạng"
-          >
-            <Activity className={`w-3.5 h-3.5 ${is500SimActive ? 'animate-spin' : ''}`} />
-            <span>{is500SimActive ? '⚡ Đang Chạy Tải 500 HS' : '🚀 Test Tải 500 Học Sinh'}</span>
-          </button>
-
           {/* Cloud & Drive Center 3D Button */}
           <button
             onClick={() => {

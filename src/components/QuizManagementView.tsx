@@ -421,11 +421,6 @@ ${q.options ? q.options.map(o => `  ${o.key}. ${o.text}`).join('\n') : q.subItem
                             📁 {quiz.folder}
                           </span>
                         )}
-                        {quiz.isInteractive && (
-                          <span className="ml-1.5 text-[10px] bg-rose-100 text-rose-700 font-bold px-1.5 py-0.5 rounded-sm">
-                            Tương tác 3D
-                          </span>
-                        )}
                       </div>
                     </div>
                   </td>

@@ -614,19 +614,6 @@ A. 1234`}
                 </div>
               </div>
             </div>
-
-            <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200">
-              <input
-                type="checkbox"
-                id="isInteractiveModal"
-                checked={isInteractive}
-                onChange={(e) => setIsInteractive(e.target.checked)}
-                className="w-4 h-4 text-teal-600 rounded"
-              />
-              <label htmlFor="isInteractiveModal" className="text-xs text-slate-700 cursor-pointer">
-                Kích hoạt chế độ <strong>Game học tập tương tác 3D</strong> (cho phép học sinh đấu trường)
-              </label>
-            </div>
           </div>
 
           {/* Generated Questions Preview conformed to Thông tư 7991 */}

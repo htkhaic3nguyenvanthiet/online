@@ -40,6 +40,7 @@ import {
 import { ExamSession, Quiz, AntiCheatConfig, StudentSubmission, Classroom, Question } from '../types/quiz';
 import { soundEffects } from '../utils/soundEffects';
 import { getStudentExamShareUrl } from '../utils/urlHelper';
+import { cloudStorageService } from '../services/cloudStorageService';
 
 interface OnlineSessionsViewProps {
   sessions: ExamSession[];
@@ -129,6 +130,18 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
 
   const handleCopyLink = (session: ExamSession) => {
     soundEffects.playClick();
+    const linkedQuiz = quizzes.find((q) => q.id === session.quizId || q.title === session.title);
+    const questions = (session.questions && session.questions.length > 0)
+      ? session.questions
+      : (linkedQuiz?.questions || []);
+
+    // Instantly publish to cloud server so that any student clicking the link gets 100% real questions!
+    cloudStorageService.publishExamDirectly({
+      session: { ...session, questions },
+      quiz: linkedQuiz,
+      questions
+    }).catch(() => {});
+
     const fullText = getSessionShareText(session);
     navigator.clipboard?.writeText(fullText);
     setCopiedId(session.id);
@@ -218,6 +231,11 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
     };
 
     onAddNewSession?.(created);
+    cloudStorageService.publishExamDirectly({
+      session: created,
+      quiz: chosenQuiz,
+      questions: created.questions
+    }).catch(() => {});
     setIsNewModalOpen(false);
     setNewTitle('');
     soundEffects.playCorrect();

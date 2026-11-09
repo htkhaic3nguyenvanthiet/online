@@ -40,14 +40,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badge: 'TT 22',
       badgeColor: 'bg-teal-500'
     },
-    { id: 'classes', label: 'Quản lý lớp', icon: <Users className="w-5 h-5" /> },
-    {
-      id: 'live-monitor',
-      label: 'Bảng điểm Real-time',
-      icon: <Activity className="w-5 h-5 text-amber-300" />,
-      badge: pendingSubmissionsCount > 0 ? `${pendingSubmissionsCount} bài mới` : 'Live',
-      badgeColor: 'bg-amber-500 animate-pulse'
-    },
     { id: 'account', label: 'Tài khoản', icon: <User className="w-5 h-5" /> }
   ];
 

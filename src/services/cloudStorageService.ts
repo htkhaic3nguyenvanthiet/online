@@ -167,36 +167,67 @@ export const cloudStorageService = {
   },
 
   /**
-   * Lấy trực tiếp đề thi và câu hỏi từ máy chủ cho học sinh
+   * Xuất bản đề thi trực tiếp lên máy chủ đám mây
+   * Đảm bảo học sinh mở link từ bất kỳ thiết bị nào (Zalo, điện thoại, máy tính)
+   * đều nhận chính xác 100% câu hỏi thật của giáo viên!
    */
-  async fetchExamFromServer(examId: string): Promise<{
+  async publishExamDirectly(payload: {
+    session?: ExamSession;
+    quiz?: Quiz;
+    questions?: Question[];
+  }): Promise<{ success: boolean; examId?: string; questionCount?: number }> {
+    try {
+      const res = await fetch('/api/exam/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        const json = await res.json();
+        return json;
+      }
+    } catch (err) {
+      console.warn('Direct publish failed, trying cloud sync:', err);
+    }
+    return { success: false };
+  },
+
+  /**
+   * Lấy trực tiếp đề thi và câu hỏi từ máy chủ cho học sinh (có cơ chế tự động thử lại)
+   */
+  async fetchExamFromServer(examId: string, retries = 2): Promise<{
     session?: ExamSession;
     quiz?: Quiz;
     questions?: Question[];
     found: boolean;
   }> {
-    try {
-      const cacheBuster = `_t=${Date.now()}`;
-      const res = await fetch(`/api/exam/${encodeURIComponent(examId)}?${cacheBuster}`, {
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-          'Expires': '0'
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const cacheBuster = `_t=${Date.now()}`;
+        const res = await fetch(`/api/exam/${encodeURIComponent(examId)}?${cacheBuster}`, {
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+          }
+        });
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && json.found) {
+            return {
+              session: json.session,
+              quiz: json.quiz,
+              questions: json.questions,
+              found: true,
+            };
+          }
         }
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && json.found) {
-          return {
-            session: json.session,
-            quiz: json.quiz,
-            questions: json.questions,
-            found: true,
-          };
-        }
+      } catch (err) {
+        console.warn(`Fetch exam attempt ${attempt + 1} failed:`, err);
       }
-    } catch (err) {
-      console.warn('Fetch exam from server error:', err);
+      if (attempt < retries) {
+        await new Promise((r) => setTimeout(r, 400));
+      }
     }
 
     return { found: false };

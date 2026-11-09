@@ -10,7 +10,7 @@ import { TopNavbar } from './components/TopNavbar';
 import { Sidebar } from './components/Sidebar';
 import { DashboardView } from './components/DashboardView';
 import { QuizManagementView } from './components/QuizManagementView';
-import { ClassroomsView } from './components/ClassroomsView';
+
 import { OnlineSessionsView } from './components/OnlineSessionsView';
 import { Live500StressTestMonitor } from './components/Live500StressTestMonitor';
 import { StudentArenaView } from './components/StudentArenaView';
@@ -202,6 +202,21 @@ export default function App() {
     });
   }, [currentSyncKey]);
 
+  // Auto-publish all existing sessions & quizzes to server on teacher mount
+  useEffect(() => {
+    if (!isDirectStudentMode && (quizzes.length > 0 || sessions.length > 0)) {
+      sessions.forEach((s) => {
+        const linkedQuiz = quizzes.find((q) => q.id === s.quizId || q.title === s.title);
+        const qList = (s.questions && s.questions.length > 0) ? s.questions : (linkedQuiz?.questions || []);
+        cloudStorageService.publishExamDirectly({
+          session: { ...s, questions: qList },
+          quiz: linkedQuiz,
+          questions: qList
+        }).catch(() => {});
+      });
+    }
+  }, [sessions.length, quizzes.length, isDirectStudentMode]);
+
   // Real-time synchronization
   useEffect(() => {
     const unsubscribe = realtimeEngine.subscribe((event) => {
@@ -259,6 +274,10 @@ export default function App() {
   const handleSaveQuiz = (newQuiz: Quiz) => {
     const updated = [newQuiz, ...quizzes];
     setQuizzes(updated);
+    cloudStorageService.publishExamDirectly({
+      quiz: newQuiz,
+      questions: newQuiz.questions
+    }).catch(() => {});
     if (newQuiz.folder) {
       try {
         const saved = localStorage.getItem('testonline_custom_folders');
@@ -277,6 +296,10 @@ export default function App() {
   const handleUpdateQuiz = (updatedQuiz: Quiz) => {
     const updated = quizzes.map((q) => (q.id === updatedQuiz.id ? updatedQuiz : q));
     setQuizzes(updated);
+    cloudStorageService.publishExamDirectly({
+      quiz: updatedQuiz,
+      questions: updatedQuiz.questions
+    }).catch(() => {});
     triggerAutoBackup(updated, classrooms, sessions);
   };
 
@@ -320,6 +343,11 @@ export default function App() {
     };
     const updatedSessions = [newSession, ...sessions];
     setSessions(updatedSessions);
+    cloudStorageService.publishExamDirectly({
+      session: newSession,
+      quiz,
+      questions: newSession.questions
+    }).catch(() => {});
     triggerAutoBackup(quizzes, classrooms, updatedSessions);
     setCurrentTab('online-sessions');
   };
@@ -358,7 +386,15 @@ export default function App() {
       const q = quizzes.find((quiz) => quiz.id === urlId || quiz.id.startsWith(urlId.slice(0, 6)));
       if (q?.questions && q.questions.length > 0) return q.questions;
     }
-    // 5. Fallback to first quiz with questions or sampleQuestions
+    // 5. In direct student mode: NEVER fallback to sample fake questions!
+    if (isDirectStudentMode) {
+      if (targetSession?.questions && targetSession.questions.length > 0) {
+        return targetSession.questions;
+      }
+      return [];
+    }
+
+    // 6. Teacher preview fallback only
     const firstWithQ = quizzes.find((quiz) => quiz.questions && quiz.questions.length > 0);
     return firstWithQ?.questions || sampleQuestions;
   };
@@ -387,6 +423,48 @@ export default function App() {
     }
 
     const questionsToServe = getExamQuestions(activeStudentExamSession, activeStudentExamTitle);
+
+    // If questions are not yet loaded from server, display retry screen instead of showing wrong questions
+    if (questionsToServe.length === 0) {
+      return (
+        <div className="min-h-screen bg-[#04181b] bg-gradient-to-b from-[#062024] via-[#082a30] to-[#04171a] flex flex-col items-center justify-center font-sans text-slate-100 p-6">
+          <div className="bg-[#0b383f]/95 border-2 border-amber-400/50 rounded-3xl p-8 max-w-md w-full text-center shadow-2xl space-y-5 backdrop-blur-md">
+            <div className="w-16 h-16 mx-auto rounded-full bg-amber-500/20 border-2 border-amber-400 flex items-center justify-center text-amber-300">
+              <Sparkles className="w-8 h-8 animate-spin" />
+            </div>
+            <div>
+              <h2 className="text-lg font-black text-white tracking-tight">Đang tải đề thi chính thức</h2>
+              <p className="text-xs text-teal-200/90 mt-1 font-medium">
+                Hệ thống đang tải toàn bộ câu hỏi do Giáo viên biên soạn từ máy chủ. Vui lòng bấm nút bên dưới nếu đường truyền mạng chậm:
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                const examParam = getExamIdFromUrl();
+                if (examParam) {
+                  setIsExamLoading(true);
+                  cloudStorageService.fetchExamFromServer(examParam).then((res) => {
+                    if (res.found && res.questions && res.questions.length > 0) {
+                      const updatedSess = {
+                        ...(res.session || activeStudentExamSession || {}),
+                        id: examParam,
+                        title: res.session?.title || res.quiz?.title || 'Bài kiểm tra trực tuyến',
+                        questions: res.questions,
+                      } as ExamSession;
+                      setActiveStudentExamSession(updatedSess);
+                      setActiveStudentExamTitle(updatedSess.title);
+                    }
+                  }).finally(() => setIsExamLoading(false));
+                }
+              }}
+              className="btn-3d btn-3d-teal w-full py-3.5 text-xs rounded-xl font-black cursor-pointer shadow-lg text-white"
+            >
+              🔄 Bấm vào đây để tải lại đề thi
+            </button>
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div className="min-h-screen bg-slate-900 bg-gradient-to-b from-[#062024] via-[#082a30] to-[#04171a] flex flex-col font-sans text-slate-100">
@@ -469,18 +547,7 @@ export default function App() {
                 />
               )}
 
-              {currentTab === 'classes' && (
-                <ClassroomsView
-                  classrooms={classrooms}
-                  onCreateClassroom={handleCreateClassroom}
-                  onUpdateClassroom={(updated) => {
-                    setClassrooms((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
-                  }}
-                  onDeleteClassroom={(clsId) => {
-                    setClassrooms((prev) => prev.filter((c) => c.id !== clsId));
-                  }}
-                />
-              )}
+
 
               {currentTab === 'quizzes' && (
                 <QuizManagementView
@@ -554,6 +621,10 @@ export default function App() {
                   onAddNewSession={(newSess) => {
                     const updatedSessions = [newSess, ...sessions];
                     setSessions(updatedSessions);
+                    cloudStorageService.publishExamDirectly({
+                      session: newSess,
+                      questions: newSess.questions
+                    }).catch(() => {});
                     triggerAutoBackup(quizzes, classrooms, updatedSessions);
                   }}
                   onUpdateSession={(updatedSess) => {

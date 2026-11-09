@@ -58,12 +58,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <button
               onClick={() => {
                 soundEffects.playClick();
-                onNavigate('live-monitor');
+                onNavigate('online-sessions');
               }}
               className="btn-3d btn-3d-amber px-4 py-2 text-xs rounded-xl flex items-center gap-2 cursor-pointer font-bold"
             >
-              <Zap className="w-4 h-4" />
-              <span>Bảng Điểm Live ({recentSubmissionsCount})</span>
+              <Send className="w-4 h-4" />
+              <span>Giao Đề Online</span>
             </button>
             <button
               onClick={() => {
@@ -159,11 +159,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
           </div>
 
-          {/* Card 4: Quản lý lớp học (Sky 3D) */}
+          {/* Card 4: Cài đặt hệ thống & Tài khoản (Sky 3D) */}
           <div
             onClick={() => {
               soundEffects.playClick();
-              onNavigate('classes');
+              onNavigate('account');
             }}
             className="card-3d card-3d-blue p-5 cursor-pointer group flex flex-col justify-between"
           >
@@ -172,14 +172,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <Users className="w-6 h-6 stroke-[2.2]" />
               </div>
               <span className="text-[11px] font-bold text-sky-800 bg-sky-100 px-2.5 py-1 rounded-full border border-sky-300">
-                Lớp học
+                Hệ thống
               </span>
             </div>
             <div className="mt-4">
               <h3 className="font-black text-slate-900 text-sm group-hover:text-sky-700 transition-colors">
-                Quản lý lớp học
+                Cài đặt & Tài khoản
               </h3>
-              <p className="text-xs text-slate-600 mt-1">Lớp 12A5, danh sách học sinh & mã số định danh</p>
+              <p className="text-xs text-slate-600 mt-1">Thông tin giáo viên, đồng bộ Google Drive & quy chế thi</p>
             </div>
           </div>
         </div>
