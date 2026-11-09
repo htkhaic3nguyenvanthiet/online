@@ -27,6 +27,7 @@ import {
   FileCheck
 } from 'lucide-react';
 import { OptionKey, Question, ExamSession, StudentSubmission, CheatLog } from '../types/quiz';
+import { RichText, richToPlain } from './RichText';
 import { soundEffects } from '../utils/soundEffects';
 import { realtimeEngine } from '../services/realtimeEngine';
 import { aiService } from '../services/aiService';
@@ -71,7 +72,10 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
   // Session config with defaults
   const resolvedSessionId = session?.id || '';
   const resolvedTitle = session?.title || quizTitle;
-  const resolvedDurationMinutes = session?.durationMinutes || 45;
+  // Thời lượng lấy từ MỘT nguồn duy nhất: durationMinutes của phiên thi —
+  // phải khớp tuyệt đối với scoringConfig để màn hình chờ, đồng hồ đếm ngược
+  // và trang kết quả không bao giờ lệch nhau (lỗi 50' vs 45' trước đây).
+  const resolvedDurationMinutes = session?.durationMinutes || session?.scoringConfig?.durationMinutes || 45;
   const resolvedAllowedAttempts = session?.allowedAttempts ?? 3; // 0 = unlimited
   const resolvedMaxTabSwitches = session?.antiCheatConfig?.maxTabSwitches ?? 3;
 
@@ -82,7 +86,9 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
   const resolvedMinScoreToUnlock = scoringConfig?.viewAnswerMinScore ?? 4.0;
   const resolvedPart1PerQ = scoringConfig?.part1PointPerQuestion ?? 0.25;
   const resolvedPart2PerQ = scoringConfig?.part2PointPerQuestion ?? 1.0;
-  const resolvedPart3PerQ = scoringConfig?.part3PointPerQuestion ?? 0.25;
+  const resolvedPart3PerQ = scoringConfig?.part3PointPerQuestion
+    ?? (session?.questions || customQuestions || []).find(q => q.partType === 'part3_short_answer')?.points
+    ?? 0.25;
 
   // Student Info (Blank by default per requirement - student must fill in)
   const [studentName, setStudentName] = useState('');
@@ -479,7 +485,16 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
   };
 
   const handleShortAnswerChange = (val: string) => {
-    const clean = val.replace(/[^0-9a-zA-Z,\.\-]/g, '').slice(0, 4);
+    // Quy tắc Phần III: CHỈ số — chữ số, dấu trừ CHỈ ở vị trí đầu, một dấu
+    // phẩy thập phân, tối đa 4 ký tự. Chặn ngay khi gõ để đáp án học sinh
+    // luôn so khớp được với đáp án chuẩn.
+    let clean = val.replace(/[^0-9,\-]/g, '');
+    clean = clean.replace(/(?!^)-/g, ''); // dấu trừ chỉ được ở đầu
+    const commaParts = clean.split(',');
+    if (commaParts.length > 2) clean = commaParts[0] + ',' + commaParts.slice(1).join('');
+    if (clean.startsWith(',')) clean = clean.slice(1);
+    if (clean === '-') clean = '-';
+    clean = clean.slice(0, 4);
     setUserAnswers({
       ...userAnswers,
       [currentQ.id]: clean
@@ -1106,12 +1121,12 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
               </span>
             )}
           </div>
-          <h2
+          <div
             className="font-black text-slate-50 leading-relaxed max-h-32 sm:max-h-36 overflow-y-auto px-2"
             style={{ fontSize: `${17 + fontSizeOffset}px` }}
           >
-            {currentQ.content}
-          </h2>
+            <RichText text={currentQ.content} images={currentQ.images} table={currentQ.table} />
+          </div>
         </div>
 
         {/* 1. PHẦN II: TRẮC NGHIỆM ĐÚNG / SAI (a, b, c, d) */}
@@ -1130,7 +1145,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                       className="font-semibold text-white leading-relaxed"
                       style={{ fontSize: `${14 + fontSizeOffset}px` }}
                     >
-                      {si.content}
+                      <RichText text={si.content} images={currentQ.images} table={currentQ.table} />
                     </span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
@@ -1233,7 +1248,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                     className="font-extrabold text-white leading-snug drop-shadow-xs"
                     style={{ fontSize: `${13.5 + fontSizeOffset}px` }}
                   >
-                    {opt.text}
+                    <RichText text={opt.text} images={currentQ.images} table={currentQ.table} />
                   </span>
 
                   {isSelected && (
@@ -1804,10 +1819,10 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                     const expected = (q.shortAnswerCorrect || q.correctAnswer || '1234').toString().trim().toLowerCase();
                     const entered = (studentChoice || '').toString().trim().toLowerCase();
                     isFullyCorrect = entered === expected;
-                    resultLabel = isFullyCorrect ? 'Đúng (+0.25 đ)' : 'Sai (0.0 đ)';
+                    resultLabel = isFullyCorrect ? `Đúng (+${resolvedPart3PerQ} đ)` : 'Sai (0.0 đ)';
                   } else {
                     isFullyCorrect = studentChoice === q.correctAnswer;
-                    resultLabel = isFullyCorrect ? 'Đúng (+0.25 đ)' : (!studentChoice ? 'Chưa trả lời (0.0 đ)' : 'Sai (0.0 đ)');
+                    resultLabel = isFullyCorrect ? `Đúng (+${resolvedPart1PerQ} đ)` : (!studentChoice ? 'Chưa trả lời (0.0 đ)' : 'Sai (0.0 đ)');
                   }
 
                   return (
@@ -1844,7 +1859,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                               <span>{resultLabel}</span>
                             </span>
                           </div>
-                          <p className="font-bold text-sm text-slate-100">{q.content}</p>
+                          <div className="font-bold text-sm text-slate-100"><RichText text={q.content} images={q.images} table={q.table} /></div>
                         </div>
 
                         {/* POST-EXAM ONLY AI TUTOR BUTTON (Chỉ mở khi >= 4.0 điểm) */}
@@ -1908,7 +1923,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                                   <span className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center font-bold text-xs shrink-0">
                                     {opt.key}
                                   </span>
-                                  <span>{opt.text}</span>
+                                  <span><RichText text={opt.text} images={q.images} table={q.table} /></span>
                                 </div>
                                 {isAnswerKeyUnlocked ? (
                                   <>
@@ -1958,7 +1973,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                               >
                                 <div className="flex-1">
                                   <span className="font-bold text-amber-300 mr-2">{si.key})</span>
-                                  <span>{si.content}</span>
+                                  <span><RichText text={si.content} images={q.images} table={q.table} /></span>
                                 </div>
                                 <div className="flex items-center gap-2 shrink-0">
                                   <span className="text-[10px] bg-black/40 px-2 py-1 rounded-md text-slate-300 font-bold">
@@ -2203,7 +2218,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                             <div
                               key={q.id}
                               className="px-3 py-1.5 rounded-xl bg-emerald-900/60 border border-emerald-400/50 flex items-center gap-1.5 text-xs text-emerald-100 font-bold shadow-xs hover:bg-emerald-900 transition-colors"
-                              title={`Câu ${idx + 1}: ${q.content}`}
+                              title={`Câu ${idx + 1}: ${q.contentPlain || richToPlain(q.content)}`}
                             >
                               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                               <span>Câu {idx + 1}</span>
@@ -2267,7 +2282,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                                       Chưa hoàn thiện đúng
                                     </span>
                                   </div>
-                                  <p className="font-bold text-sm text-slate-100">{q.content}</p>
+                                  <div className="font-bold text-sm text-slate-100"><RichText text={q.content} images={q.images} table={q.table} /></div>
                                 </div>
 
                                 {/* AI Button: only unlocked when score >= 4.0 */}
@@ -2313,7 +2328,7 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                                       {typeof studentAnswerKey === 'object'
                                         ? JSON.stringify(studentAnswerKey)
                                         : studentAnswerKey
-                                        ? `${studentAnswerKey}. ${studentChoiceObj?.text || ''}`
+                                        ? <>{studentAnswerKey}. <RichText text={studentChoiceObj?.text} images={q.images} table={q.table} /></>
                                         : 'Chưa trả lời'}
                                     </span>
                                   </div>
@@ -2332,8 +2347,8 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                                         {q.partType === 'part2_true_false'
                                           ? (q.correctAnswer || 'Xem chi tiết từng ý')
                                           : q.partType === 'part3_short_answer'
-                                          ? `Đáp án 4 số: ${q.shortAnswerCorrect || q.correctAnswer || '1234'}`
-                                          : `${q.correctAnswer}. ${correctChoiceObj?.text || ''}`}
+                                          ? `Đáp án: ${q.shortAnswerCorrect || q.correctAnswer || '1234'}`
+                                          : <>{q.correctAnswer}. <RichText text={correctChoiceObj?.text} images={q.images} table={q.table} /></>}
                                       </span>
                                     </div>
                                   </div>
@@ -2390,14 +2405,14 @@ export const StudentArenaView: React.FC<StudentArenaViewProps> = ({
                             >
                               <div className="flex items-center justify-between">
                                 <span className="font-bold text-amber-200">
-                                  Câu {originalIdx + 1}: {q.content}
+                                  Câu {originalIdx + 1}: <RichText text={q.content} images={q.images} table={q.table} />
                                 </span>
                                 <span className="text-[10px] bg-amber-400 text-amber-950 px-2 py-0.5 rounded font-bold">
                                   Chưa chọn đáp án
                                 </span>
                               </div>
                               <div className="p-2 bg-emerald-950/60 rounded-lg text-emerald-200 border border-emerald-500/30">
-                                <strong>Đáp án đúng:</strong> {isAnswerKeyUnlocked ? (q.partType === 'part2_true_false' ? (q.correctAnswer || 'Xem chi tiết') : q.partType === 'part3_short_answer' ? (q.shortAnswerCorrect || '1234') : `${q.correctAnswer}. ${correctChoiceObj?.text || ''}`) : `🔒 Khóa (Cần ≥ ${resolvedMinScoreToUnlock.toFixed(1)}đ)`}
+                                <strong>Đáp án đúng:</strong> {isAnswerKeyUnlocked ? (q.partType === 'part2_true_false' ? (q.correctAnswer || 'Xem chi tiết') : q.partType === 'part3_short_answer' ? (q.shortAnswerCorrect || '1234') : <>{q.correctAnswer}. <RichText text={correctChoiceObj?.text} images={q.images} table={q.table} /></>) : `🔒 Khóa (Cần ≥ ${resolvedMinScoreToUnlock.toFixed(1)}đ)`}
                               </div>
                             </div>
                           );

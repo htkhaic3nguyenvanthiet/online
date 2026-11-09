@@ -107,6 +107,11 @@ export default function App() {
             if (res.found && res.questions && res.questions.length > 0) {
               const fetchedQuestions = res.questions;
               const title = res.session?.title || res.quiz?.title || 'Bài kiểm tra trực tuyến';
+              // MỘT nguồn thời lượng duy nhất cho cả phiên thi lẫn cấu hình
+              // chấm điểm — trước đây scoringConfig ghi cứng 45' trong khi
+              // phiên thi lấy theo đề, khiến màn hình chờ báo sai thời gian.
+              const resolvedDuration = res.session?.durationMinutes || res.quiz?.durationMinutes || res.session?.scoringConfig?.durationMinutes || 50;
+              const hints = res.quiz?.scoringHints;
 
               const updatedSess: ExamSession = {
                 id: res.session?.id || examParam,
@@ -118,7 +123,7 @@ export default function App() {
                 status: 'active',
                 shareUrl: getStudentExamShareUrl(examParam),
                 allowedAttempts: res.session?.allowedAttempts || 5,
-                durationMinutes: res.session?.durationMinutes || res.quiz?.durationMinutes || 45,
+                durationMinutes: resolvedDuration,
                 totalSubmissions: 0,
                 maxSlots: 500,
                 isArenaMode: true,
@@ -126,10 +131,10 @@ export default function App() {
                 questions: fetchedQuestions,
                 scoringConfig: res.session?.scoringConfig || {
                   totalPoints: 10,
-                  durationMinutes: 45,
-                  part1PointPerQuestion: 0.25,
-                  part2PointPerQuestion: 1.0,
-                  part3PointPerQuestion: 0.25,
+                  durationMinutes: resolvedDuration,
+                  part1PointPerQuestion: hints?.part1PointPerQuestion ?? 0.25,
+                  part2PointPerQuestion: hints?.part2PointPerQuestion ?? 1.0,
+                  part3PointPerQuestion: hints?.part3PointPerQuestion ?? 0.25,
                   allowViewAnswerKey: true,
                   viewAnswerMinScore: 4.0,
                   allowAiTutorExplanation: true,
@@ -172,6 +177,16 @@ export default function App() {
                   maxSlots: 500,
                   isArenaMode: localQuiz.isInteractive,
                   questions: localQuiz.questions,
+                  scoringConfig: {
+                    totalPoints: 10,
+                    durationMinutes: localQuiz.durationMinutes || 50,
+                    part1PointPerQuestion: localQuiz.scoringHints?.part1PointPerQuestion ?? 0.25,
+                    part2PointPerQuestion: localQuiz.scoringHints?.part2PointPerQuestion ?? 1.0,
+                    part3PointPerQuestion: localQuiz.scoringHints?.part3PointPerQuestion ?? 0.25,
+                    allowViewAnswerKey: true,
+                    viewAnswerMinScore: 4.0,
+                    allowAiTutorExplanation: true,
+                  },
                 });
               }
             }
@@ -331,9 +346,9 @@ export default function App() {
       scoringConfig: {
         totalPoints: 10,
         durationMinutes: quiz.durationMinutes || 50,
-        part1PointPerQuestion: 0.25,
-        part2PointPerQuestion: 1.0,
-        part3PointPerQuestion: 0.25,
+        part1PointPerQuestion: quiz.scoringHints?.part1PointPerQuestion ?? 0.25,
+        part2PointPerQuestion: quiz.scoringHints?.part2PointPerQuestion ?? 1.0,
+        part3PointPerQuestion: quiz.scoringHints?.part3PointPerQuestion ?? 0.25,
         allowViewAnswerKey: true,
         viewAnswerMinScore: 4.0,
         allowAiTutorExplanation: true,

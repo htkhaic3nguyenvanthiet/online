@@ -1804,6 +1804,13 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
                         if (q) {
                           setNewTitle(q.title);
                           setNewDuration(q.durationMinutes || 50);
+                          // Trọng số từng phần đọc từ file Word khi import —
+                          // áp luôn vào cấu hình phiên thi mới.
+                          if (q.scoringHints) {
+                            setNewPart1PerQ(q.scoringHints.part1PointPerQuestion);
+                            setNewPart2PerQ(q.scoringHints.part2PointPerQuestion);
+                            setNewPart3PerQ(q.scoringHints.part3PointPerQuestion);
+                          }
                         }
                       }}
                       className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:border-teal-500 font-bold bg-white text-slate-800"
@@ -2069,6 +2076,12 @@ export const OnlineSessionsView: React.FC<OnlineSessionsViewProps> = ({
             <div className="p-2.5 bg-teal-50 rounded-xl text-teal-800 text-xs font-mono break-all text-left">
               {qrShareUrl || getStudentExamShareUrl(activeQrModal.id)}
             </div>
+
+            {qrShareUrl.length > 30000 && (
+              <div className="p-2.5 bg-amber-50 border border-amber-300 rounded-xl text-amber-800 text-[11px] font-semibold text-left">
+                ⚠ Đề này có hình ảnh/công thức nên link rất dài ({qrShareUrl.length.toLocaleString('vi-VN')} ký tự) và KHÔNG tạo được mã QR quét được. Thầy hãy dùng nút “Sao chép Link” rồi gửi link cho học sinh qua Zalo/LMS — link dài vẫn mở đúng đề, không bị cắt ngắn.
+              </div>
+            )}
 
             <div className="flex gap-2">
               <button

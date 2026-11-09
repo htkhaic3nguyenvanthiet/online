@@ -22,8 +22,10 @@ import {
   parseDocxFile,
   parseCircular7991Html,
   getSampleCircular7991Template,
+  findPart3Violations,
   ParsedExamResult
 } from '../utils/wordExamParser';
+import { RichText } from './RichText';
 
 interface CreateQuizModalProps {
   isOpen: boolean;
@@ -58,6 +60,8 @@ export const CreateQuizModal: React.FC<CreateQuizModalProps> = ({
   const [partBreakdown, setPartBreakdown] = useState({ part1: 0, part2: 0, part3: 0 });
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [isParsingWord, setIsParsingWord] = useState(false);
+  // Cảnh báo ở tầng tài liệu khi import Word (công thức/hình không đọc được…)
+  const [importWarnings, setImportWarnings] = useState<string[]>([]);
 
   // AI Generation inputs
   const [aiTopic, setAiTopic] = useState('Đất phèn, đất mặn và biện pháp cải tạo đất trồng');
@@ -96,6 +100,16 @@ export const CreateQuizModal: React.FC<CreateQuizModalProps> = ({
         part3: parsed.part3Count
       });
       setDurationMinutes(parsed.durationMinutes || 50);
+      // Môn học đọc từ chính tiêu đề file Word (trước đây luôn để "Công nghệ 12"
+      // kể cả khi nạp đề Sinh/Toán/Lý/Hóa).
+      if (parsed.subject) setSubject(parsed.subject);
+      setImportWarnings(parsed.importWarnings || []);
+      // Nếu thư mục suy ra từ môn học đã có sẵn trong danh sách thì chọn luôn,
+      // tránh đề Sinh lại nằm trong thư mục CÔNG NGHỆ 12.
+      const subjectFolder = (parsed.subject || '').toUpperCase();
+      if (subjectFolder && availableFolders.includes(subjectFolder)) {
+        setTargetFolder(subjectFolder);
+      }
 
       soundEffects.playCorrect();
     } catch (err: any) {
@@ -120,6 +134,7 @@ export const CreateQuizModal: React.FC<CreateQuizModalProps> = ({
       part3: parsed.part3Count
     });
     setUploadedFileName('De_Mau_Chuan_TT7991_CongNghe12.docx');
+    setImportWarnings(parsed.importWarnings || []);
     soundEffects.playCorrect();
   };
 
@@ -157,6 +172,7 @@ export const CreateQuizModal: React.FC<CreateQuizModalProps> = ({
 
       setQuestions(mappedQuestions);
       setPartBreakdown({ part1: mappedQuestions.length, part2: 0, part3: 0 });
+      setImportWarnings([]);
       soundEffects.playCorrect();
     } catch (err: any) {
       alert('Lỗi tạo đề AI: ' + err?.message);
@@ -180,6 +196,7 @@ export const CreateQuizModal: React.FC<CreateQuizModalProps> = ({
       if (parsed.questions.length > 0) {
         setQuestions(parsed.questions);
         setTitle(title || parsed.title);
+        setImportWarnings(parsed.importWarnings || []);
         setPartBreakdown({
           part1: parsed.part1Count,
           part2: parsed.part2Count,
@@ -255,7 +272,7 @@ export const CreateQuizModal: React.FC<CreateQuizModalProps> = ({
 
     const resolvedFolder = (targetFolder === '__NEW__' && customFolderName.trim())
       ? customFolderName.trim().toUpperCase()
-      : targetFolder || 'CÔNG NGHỆ 12';
+      : targetFolder || subject.toUpperCase();
 
     const created: Quiz = {
       id: 'quiz-' + Date.now(),
@@ -271,11 +288,23 @@ export const CreateQuizModal: React.FC<CreateQuizModalProps> = ({
       folder: resolvedFolder,
       isInteractive,
       questions: questions,
+      // Trọng số đọc từ file (điểm từng câu đã nằm trên từng câu hỏi) — phiên
+      // thi tạo sau này dùng làm mặc định thay cho 0.25 ghi cứng.
+      scoringHints: {
+        part1PointPerQuestion: questions.find((q) => q.partType === 'part1_choice')?.points ?? 0.25,
+        part2PointPerQuestion: questions.find((q) => q.partType === 'part2_true_false')?.points ?? 1.0,
+        part3PointPerQuestion: questions.find((q) => q.partType === 'part3_short_answer')?.points ?? 0.25,
+      },
     };
 
     onSaveQuiz(created);
     onClose();
   };
+
+  // Vi phạm quy tắc Phần III (chỉ số thuần, 1–4 ký tự) — tính trực tiếp từ
+  // danh sách câu hỏi hiện tại nên áp dụng cho mọi luồng nạp đề.
+  const part3Violations = findPart3Violations(questions);
+  const otherImportWarnings = importWarnings.filter((w) => !w.includes('Đáp án Phần III'));
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
@@ -598,6 +627,8 @@ A. 1234`}
                   <option value="Sinh học 11">Sinh học 11</option>
                   <option value="Sinh học 12">Sinh học 12</option>
                   <option value="Toán học 12">Toán học 12</option>
+                  <option value="Vật lí 12">Vật lí 12</option>
+                  <option value="Hóa học 12">Hóa học 12</option>
                 </select>
               </div>
 
@@ -619,6 +650,36 @@ A. 1234`}
           {/* Generated Questions Preview conformed to Thông tư 7991 */}
           {questions.length > 0 && (
             <div className="space-y-3 pt-2 border-t border-slate-200">
+              {(part3Violations.length > 0 || otherImportWarnings.length > 0) && (
+                <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-900 space-y-1.5">
+                  <div className="font-black flex items-center gap-1.5">
+                    <AlertCircle className="w-4 h-4 text-amber-600" />
+                    Cần kiểm tra lại trước khi xuất bản (vẫn lưu được bình thường):
+                  </div>
+                  {part3Violations.length > 0 && (
+                    <div>
+                      <span className="font-bold">Đáp án Phần III chưa đúng quy tắc số thuần 1–4 ký tự:</span>
+                      <ul className="list-disc pl-5 mt-0.5 space-y-0.5">
+                        {part3Violations.map((v, i) => (
+                          <li key={i}>
+                            Câu Phần III thứ {v.partIndex}: đáp án “<strong>{v.answer || '(trống)'}</strong>” — {v.reason}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {otherImportWarnings.length > 0 && (
+                    <ul className="list-disc pl-5 space-y-0.5">
+                      {otherImportWarnings.slice(0, 10).map((w, i) => (
+                        <li key={i}>{w}</li>
+                      ))}
+                      {otherImportWarnings.length > 10 && (
+                        <li>… và {otherImportWarnings.length - 10} cảnh báo nữa (xem chi tiết trong mục Chỉnh sửa đề).</li>
+                      )}
+                    </ul>
+                  )}
+                </div>
+              )}
               <div className="flex items-center justify-between">
                 <span className="font-extrabold text-slate-900 text-xs">
                   Danh sách câu hỏi đã nhận diện ({questions.length} câu):
@@ -637,7 +698,7 @@ A. 1234`}
                     <div className="flex items-start justify-between gap-2">
                       <div className="font-bold text-slate-900">
                         <span className="text-teal-700 font-black mr-1">Câu {idx + 1}:</span>
-                        {q.content}
+                        <RichText text={q.content} images={q.images} table={q.table} compact />
                       </div>
                       <span className="text-[10px] uppercase font-mono font-bold px-1.5 py-0.5 rounded-sm bg-slate-200 text-slate-700 shrink-0">
                         {q.partType === 'part1_choice'
@@ -661,7 +722,7 @@ A. 1234`}
                             }`}
                           >
                             <span className="font-black mr-1">{opt.key}.</span>
-                            {opt.text}
+                            <RichText text={opt.text} images={q.images} table={q.table} compact />
                             {opt.key === q.correctAnswer && (
                               <span className="ml-1 text-[10px] text-emerald-800 font-black">
                                 (Đúng - Gạch chân)
@@ -686,7 +747,7 @@ A. 1234`}
                           >
                             <div>
                               <span className="font-black mr-1.5">{si.key})</span>
-                              {si.content}
+                              <RichText text={si.content} images={q.images} table={q.table} compact />
                             </div>
                             <span
                               className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
@@ -700,14 +761,14 @@ A. 1234`}
                       </div>
                     )}
 
-                    {/* Phần III Short answer (4 characters numeric) */}
+                    {/* Phần III Short answer — đáp án số thuần 1–4 ký tự */}
                     {q.partType === 'part3_short_answer' && (
                       <div className="p-2 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between text-[11px]">
                         <span className="text-blue-900">
-                          Đáp án số 4 ký tự: <strong className="font-mono text-sm">{q.shortAnswerCorrect || '1234'}</strong>
+                          Đáp án trả lời ngắn: <strong className="font-mono text-sm">{q.shortAnswerCorrect || '—'}</strong>
                         </span>
                         <span className="text-[10px] bg-blue-200/60 text-blue-900 font-bold px-2 py-0.5 rounded-md">
-                          Mặc định A.1234
+                          Phần III
                         </span>
                       </div>
                     )}

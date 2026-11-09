@@ -28,6 +28,23 @@ export interface Question {
   essayAnswerGuide?: string;
   explanation?: string;
   points: number;
+  // --- Nội dung giàu (Phase B) — mọi trường đều tùy chọn, đề cũ không có vẫn chạy ---
+  // Ảnh nhúng gắn cứng trong câu hỏi; marker ⟦img:N⟧ trong content/options/subItems
+  // trỏ theo chỉ số của mảng này (data URI, đã nén khi import). Phần tử '' nghĩa là
+  // hình không đọc được — giao diện hiện khung cảnh báo, không bịa hình thay thế.
+  images?: string[];
+  // Bảng dẫn liệu có cấu trúc (hàng x cột, hàng đầu là tiêu đề); marker ⟦table⟧
+  // trong content đánh dấu vị trí hiển thị bảng.
+  table?: string[][];
+  // Bản văn bản phẳng của thân câu (công thức đã tuyến tính hóa, ví dụ (2x+1)/(x-1))
+  // dùng cho tiêu đề, tìm kiếm và các ngữ cảnh không render được LaTeX.
+  contentPlain?: string;
+  // XML OMML gốc của các công thức trong câu — giữ lại để sau này xuất Word
+  // trung thực (phát lại OMML gốc thay vì chuyển đổi vòng), như EduMix vẫn lưu.
+  ommlXml?: string[];
+  // Cảnh báo phát sinh khi import câu này (phương án rỗng, đáp án Phần III sai
+  // quy tắc số thuần 1–4 ký tự, công thức chưa đọc được...). Chỉ để hiển thị.
+  parseWarnings?: string[];
 }
 
 export interface Quiz {
@@ -44,6 +61,13 @@ export interface Quiz {
   folder?: string;
   isInteractive?: boolean;
   questions: Question[];
+  // Trọng số điểm từng phần đọc được từ chính file Word khi import (Phase B) —
+  // dùng làm mặc định khi tạo phiên thi thay cho hằng số 0.25 ghi cứng.
+  scoringHints?: {
+    part1PointPerQuestion: number;
+    part2PointPerQuestion: number;
+    part3PointPerQuestion: number;
+  };
 }
 
 export interface Student {

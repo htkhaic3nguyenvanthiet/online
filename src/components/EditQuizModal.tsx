@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import { Quiz, Question, OptionKey } from '../types/quiz';
 import { soundEffects } from '../utils/soundEffects';
+import { findPart3Violations, validatePart3Answer } from '../utils/wordExamParser';
+import { RichText } from './RichText';
 
 interface EditQuizModalProps {
   quiz: Quiz | null;
@@ -160,12 +162,23 @@ export const EditQuizModal: React.FC<EditQuizModalProps> = ({
               </span>
             </div>
 
+            {findPart3Violations(questions).length > 0 && (
+              <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 space-y-1">
+                <div className="font-black">⚠ Đáp án Phần III chưa đúng quy tắc (chỉ gồm số, tối đa 4 ký tự — vẫn lưu được, nhưng học sinh sẽ không nhập khớp được):</div>
+                <ul className="list-disc pl-5 space-y-0.5">
+                  {findPart3Violations(questions).map((v, i) => (
+                    <li key={i}>Câu Phần III thứ {v.partIndex}: “<strong>{v.answer || '(trống)'}</strong>” — {v.reason}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             <div className="space-y-3">
               {questions.map((q, idx) => (
                 <div key={q.id || idx} className="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-2">
                   <div className="flex items-start justify-between gap-3">
                     <div className="font-bold text-slate-900 text-xs">
-                      Câu {idx + 1}: {q.content}
+                      Câu {idx + 1}: <RichText text={q.content} images={q.images} table={q.table} compact />
                     </div>
                     <button
                       onClick={() => handleDeleteQuestion(q.id)}
@@ -187,7 +200,7 @@ export const EditQuizModal: React.FC<EditQuizModalProps> = ({
                               : 'bg-slate-50 border-slate-200 text-slate-700'
                           }`}
                         >
-                          <span><strong className="mr-1">{si.key})</strong> {si.content}</span>
+                          <span><strong className="mr-1">{si.key})</strong> <RichText text={si.content} images={q.images} table={q.table} compact /></span>
                           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white border border-slate-200">
                             {si.isCorrect ? 'ĐÚNG (Gạch chân)' : 'SAI'}
                           </span>
@@ -197,9 +210,16 @@ export const EditQuizModal: React.FC<EditQuizModalProps> = ({
                   )}
 
                   {q.partType === 'part3_short_answer' && (
-                    <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-xl text-xs flex items-center justify-between">
-                      <span className="text-blue-900">Đáp án 4 ký tự: <strong className="font-mono text-sm">{q.shortAnswerCorrect || q.correctAnswer || '1234'}</strong></span>
-                      <span className="text-[10px] bg-blue-200 text-blue-900 font-bold px-2 py-0.5 rounded">Mặc định A.1234</span>
+                    <div className="space-y-1">
+                      <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-xl text-xs flex items-center justify-between">
+                        <span className="text-blue-900">Đáp án trả lời ngắn: <strong className="font-mono text-sm">{q.shortAnswerCorrect || q.correctAnswer || '—'}</strong></span>
+                        <span className="text-[10px] bg-blue-200 text-blue-900 font-bold px-2 py-0.5 rounded">Phần III</span>
+                      </div>
+                      {validatePart3Answer((q.shortAnswerCorrect || q.correctAnswer || '').toString()) && (
+                        <div className="text-[11px] text-amber-700 font-bold">
+                          ⚠ {validatePart3Answer((q.shortAnswerCorrect || q.correctAnswer || '').toString())}
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -214,8 +234,16 @@ export const EditQuizModal: React.FC<EditQuizModalProps> = ({
                               : 'bg-slate-50 border-slate-200 text-slate-700'
                           }`}
                         >
-                          <span className="font-mono font-bold mr-1">{opt.key}.</span> {opt.text}
+                          <span className="font-mono font-bold mr-1">{opt.key}.</span> <RichText text={opt.text} images={q.images} table={q.table} compact />
                         </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {q.parseWarnings && q.parseWarnings.length > 0 && (
+                    <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 space-y-0.5">
+                      {q.parseWarnings.map((w, wi) => (
+                        <div key={wi}>⚠ {w}</div>
                       ))}
                     </div>
                   )}

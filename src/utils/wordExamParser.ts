@@ -1,5 +1,6 @@
 import mammoth from 'mammoth';
 import { Question, OptionKey, SubQuestionItem, Quiz } from '../types/quiz';
+import { preprocessDocx, MathSegment } from './docxPreprocess';
 
 export interface ParsedExamResult {
   title: string;
@@ -13,16 +14,96 @@ export interface ParsedExamResult {
   part2Count: number;
   part3Count: number;
   rawHtml?: string;
+  // Trọng số điểm từng phần đọc từ chính file (Phase B); UI dùng làm mặc định
+  // khi tạo phiên thi thay cho hằng số ghi cứng.
+  part1PointPerQuestion: number;
+  part2PointPerQuestion: number;
+  part3PointPerQuestion: number;
+  // Đáp án Phần III vi phạm quy tắc số thuần 1–4 ký tự (chỉ cảnh báo).
+  part3Violations: Part3Violation[];
+  // Cảnh báo import khác (công thức/hình không đọc được, phương án rỗng...).
+  importWarnings: string[];
+}
+
+/** Dữ liệu giàu trích từ .docx ở tầng tiền xử lí (xem docxPreprocess.ts). */
+export interface ParseExtras {
+  mathSegments?: MathSegment[];
+  /** Data URI theo chỉ số token ⟦img:{i}⟧ toàn cục trong tài liệu. */
+  imageDataUris?: string[];
+  warnings?: string[];
+}
+
+export interface Part3Violation {
+  /** Số thứ tự câu trong Phần III (1-based). */
+  partIndex: number;
+  /** Thứ tự toàn cục của câu trong đề. */
+  order: number;
+  answer: string;
+  reason: string;
+}
+
+/**
+ * Quy tắc Phần III của Thầy: đáp án CHỈ là con số — chữ số, dấu trừ đứng đầu
+ * nếu âm, dấu phẩy thập phân — dài tự nhiên 1–4 ký tự, KHÔNG đệm 0.
+ * Trả về lý do vi phạm, hoặc null nếu hợp lệ.
+ */
+export function validatePart3Answer(answer: string): string | null {
+  const a = (answer ?? '').trim();
+  if (!a) return 'Chưa có đáp án';
+  if (a.length > 4) return `Dài ${a.length} ký tự — tối đa 4 ký tự (tính cả dấu trừ và dấu phẩy)`;
+  if (!/^-?\d+(,\d+)?$/.test(a)) {
+    return 'Chỉ được gồm chữ số, dấu trừ ở đầu (nếu âm) và dấu phẩy thập phân — không phân số, %, đơn vị hay chữ';
+  }
+  return null;
+}
+
+export function findPart3Violations(questions: Question[]): Part3Violation[] {
+  const violations: Part3Violation[] = [];
+  let partIndex = 0;
+  questions.forEach((q) => {
+    if (q.partType !== 'part3_short_answer') return;
+    partIndex++;
+    const answer = (q.shortAnswerCorrect || q.correctAnswer || '').toString();
+    const reason = validatePart3Answer(answer);
+    if (reason) {
+      violations.push({ partIndex, order: q.order, answer, reason });
+    }
+  });
+  return violations;
 }
 
 // Clean HTML tags while preserving text
 function stripHtml(html: string): string {
   if (typeof document === 'undefined') {
-    return html.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ');
+    return html
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&amp;/g, '&');
   }
   const tmp = document.createElement('div');
   tmp.innerHTML = html;
   return (tmp.textContent || tmp.innerText || '').replace(/\u00a0/g, ' ');
+}
+
+/**
+ * HTML → "rich text" used across the app (Phase B): plain text plus inline
+ * markers that RichText.tsx renders —
+ *   \(...\)     LaTeX (inserted when OMML tokens are substituted)
+ *   ⟦img:N⟧     image N of the owning question (token inserted pre-mammoth)
+ *   ⟦table⟧     the question's structured table
+ *   ⟦sub:x⟧ / ⟦sup:x⟧   subscript / superscript runs (was: flattened digits)
+ * Mammoth emits <sub>/<sup> for vertAlign runs; keep their semantics here
+ * instead of letting stripHtml merge them into the surrounding digits.
+ */
+function htmlToRichText(html: string): string {
+  const withMarkers = html
+    .replace(/<sub>([\s\S]*?)<\/sub>/gi, (_m, inner) => `⟦sub:${inner.replace(/<[^>]+>/g, '')}⟧`)
+    .replace(/<sup>([\s\S]*?)<\/sup>/gi, (_m, inner) => `⟦sup:${inner.replace(/<[^>]+>/g, '')}⟧`);
+  return stripHtml(withMarkers);
 }
 
 // Check if a specific target option key (e.g. "A." or "a)") has underline formatting
@@ -57,7 +138,14 @@ function isTargetUnderlined(htmlSnippet: string, keyRegex: RegExp): boolean {
  * (đối chứng) are part of words, not markers.
  */
 function findMarkerStart(body: string, key: string, punctClass: string): number {
-  const re = new RegExp(`(?:<[^>]*>|\\s)*(?:<u>)?(?:<strong>)?\\s*${key}[${punctClass}]`, 'gi');
+  // The leading run may swallow OPENING/structural tags and whitespace, but
+  // NEVER the CLOSING tag of an inline formatting element (</u>, </b>, ...):
+  // those closers belong to the PREVIOUS option's marked letter. Letting the
+  // regex eat them used to truncate the previous option's snippet before its
+  // </u>, which silently broke correct-answer detection (Phase A finding 2 —
+  // worst when the next option's text was empty because mammoth dropped its
+  // OMML formula, putting the marker immediately after </u></b>).
+  const re = new RegExp(`(?:<(?!\/(?:u|b|strong|i|em|sub|sup|del)>)[^>]*>|\\s)*(?:<u>)?(?:<strong>)?\\s*${key}[${punctClass}]`, 'gi');
   let m: RegExpExecArray | null;
   while ((m = re.exec(body)) !== null) {
     const letterPos = m.index + m[0].length - 2;
@@ -118,7 +206,11 @@ function extractPart3AnswersFromKey(answerSectionHtml: string): Map<number, stri
  * Robust Circular 7991 HTML Parser:
  * Guarantees that EVERY authored question in the Word document is preserved.
  */
-export function parseCircular7991Html(htmlContent: string, defaultTitle = 'ĐỀ THI THEO THÔNG TƯ 7991'): ParsedExamResult {
+export function parseCircular7991Html(
+  htmlContent: string,
+  defaultTitle = 'ĐỀ THI THEO THÔNG TƯ 7991',
+  extras?: ParseExtras
+): ParsedExamResult {
   // Normalize whitespace & linebreaks
   const normalizedHtml = htmlContent
     .replace(/<br\s*\/?>/gi, '\n')
@@ -157,7 +249,30 @@ export function parseCircular7991Html(htmlContent: string, defaultTitle = 'ĐỀ
 
   // Strip <img> tags: embedded base64 image data contains letter+punctuation
   // sequences (e.g. "A/") that create false option markers inside the payload.
-  const bodyHtml = normalizedHtml.substring(0, bodyEnd).replace(/<img[^>]*>/gi, '');
+  // (Word images arrive as ⟦img:N⟧ text tokens via the pre-processing layer,
+  // so no real image is lost by this strip.)
+  let bodyHtml = normalizedHtml.substring(0, bodyEnd).replace(/<img[^>]*>/gi, '');
+
+  // Extract <table> blocks into structured rows BEFORE question splitting.
+  // Flattening them into running text (old behaviour) destroyed the grid —
+  // e.g. the Sinh F1/F2/F3 genotype table became one unreadable line. Each
+  // table is replaced by a ⟦table:K⟧ token; the owning question later gets
+  // `table` attached and the token normalised to ⟦table⟧ for the renderer.
+  const extractedTables: string[][][] = [];
+  bodyHtml = bodyHtml.replace(/<table\b[\s\S]*?<\/table>/gi, (tableHtml) => {
+    const rows: string[][] = [];
+    const rowParts = tableHtml.split(/<tr\b[^>]*>/i).slice(1);
+    rowParts.forEach((rowHtml) => {
+      const cells = rowHtml
+        .split(/<t[dh]\b[^>]*>/i)
+        .slice(1)
+        .map((cellHtml) => htmlToRichText(cellHtml.replace(/<\/t[dh]>[\s\S]*$/i, '')).replace(/\s+/g, ' ').trim());
+      if (cells.length > 0 && cells.some((c) => c.length > 0)) rows.push(cells);
+    });
+    const idx = extractedTables.length;
+    extractedTables.push(rows);
+    return `\n⟦table:${idx}⟧\n`;
+  });
 
   // Identify sections: PHẦN I, PHẦN II, PHẦN III
   const part1Regex = PART1_HEADING;
@@ -200,6 +315,104 @@ export function parseCircular7991Html(htmlContent: string, defaultTitle = 'ĐỀ
   // Question splitting regex supporting <b>, <strong>, <u>, <span>, <p>, <td>
   const questionSplitter = /(?=(?:<p[^>]*>|<tr[^>]*>|<td[^>]*>|<div[^>]*>|\n|^)\s*(?:<[^>]+>)*\s*Câu\s*\d+[:.\-\s])/i;
 
+  // --- Rich-content finalisation (Phase B) --------------------------------
+  // Runs on each fully-built question: substitutes ⟦MATH{i}⟧ tokens with
+  // \(LaTeX\), attaches the structured table, re-indexes ⟦img:N⟧ markers so
+  // they point into THIS question's own `images` array (an image can never
+  // be detached from its question — the EduMix shuffle lesson), keeps the
+  // original OMML XML on the question, and derives the plain-text stem.
+  const finalizeRich = (q: Question): void => {
+    const warnings: string[] = [...(q.parseWarnings || [])];
+    const ommlCollector: string[] = [];
+
+    const subMath = (text: string, plainOut: { value: string }): string => {
+      plainOut.value = text.replace(/⟦MATH(\d+)⟧/g, (m, n) => {
+        const seg = extras?.mathSegments?.[Number(n)];
+        return seg ? seg.plain || seg.latex || m : m;
+      });
+      return text.replace(/⟦MATH(\d+)⟧/g, (m, n) => {
+        const seg = extras?.mathSegments?.[Number(n)];
+        if (!seg) return m; // unknown token — leave it visible, never invent
+        if (seg.ommlXml) ommlCollector.push(seg.ommlXml);
+        if (!seg.latex) {
+          warnings.push('Có công thức toán chưa chuyển được sang LaTeX — vị trí công thức hiện dấu "chưa đọc được", XML gốc vẫn được lưu kèm câu hỏi.');
+          return '⟦công thức chưa đọc được⟧';
+        }
+        return `\\(${seg.latex}\\)`;
+      });
+    };
+
+    const contentPlainBox = { value: '' };
+    q.content = subMath(q.content, contentPlainBox);
+    (q.options || []).forEach((opt) => {
+      opt.text = subMath(opt.text, { value: '' });
+    });
+    (q.subItems || []).forEach((si) => {
+      si.content = subMath(si.content, { value: '' });
+    });
+    if (ommlCollector.length > 0) q.ommlXml = ommlCollector;
+
+    // Plain-text stem for titles/search/fallbacks (from the linearised math
+    // version, with media/table/sub-sup markers reduced to readable text).
+    q.contentPlain = contentPlainBox.value
+      .replace(/⟦img:\d+⟧/g, '[Hình ảnh]')
+      .replace(/⟦table(?::\d+)?⟧/g, '[Bảng số liệu]')
+      .replace(/⟦sub:([\s\S]*?)⟧/g, '$1')
+      .replace(/⟦sup:([\s\S]*?)⟧/g, '$1')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    // Structured table: first ⟦table:K⟧ found (content, then options, then
+    // sub-items) becomes q.table; every marker normalises to ⟦table⟧.
+    const fields: { get: () => string; set: (v: string) => void }[] = [
+      { get: () => q.content, set: (v) => { q.content = v; } },
+      ...(q.options || []).map((opt) => ({ get: () => opt.text, set: (v: string) => { opt.text = v; } })),
+      ...(q.subItems || []).map((si) => ({ get: () => si.content, set: (v: string) => { si.content = v; } })),
+    ];
+    let tableAttached = false;
+    fields.forEach((f) => {
+      const text = f.get();
+      if (!/⟦table:\d+⟧/.test(text)) return;
+      f.set(text.replace(/⟦table:(\d+)⟧/g, (_m, n) => {
+        const rows = extractedTables[Number(n)];
+        if (rows && !tableAttached) {
+          q.table = rows;
+          tableAttached = true;
+        }
+        return '⟦table⟧';
+      }));
+    });
+
+    // Images: collect the global token indices actually used by this
+    // question (in field order) and re-index them locally.
+    const seen = new Map<number, number>();
+    const order: number[] = [];
+    const scan = (text: string) => {
+      for (const m of text.matchAll(/⟦img:(\d+)⟧/g)) {
+        const g = Number(m[1]);
+        if (!seen.has(g)) {
+          seen.set(g, order.length);
+          order.push(g);
+        }
+      }
+    };
+    fields.forEach((f) => scan(f.get()));
+    if (order.length > 0) {
+      const rewrite = (text: string) =>
+        text.replace(/⟦img:(\d+)⟧/g, (m, n) => {
+          const local = seen.get(Number(n));
+          return local === undefined ? m : `⟦img:${local}⟧`;
+        });
+      fields.forEach((f) => f.set(rewrite(f.get())));
+      q.images = order.map((g) => extras?.imageDataUris?.[g] ?? '');
+      if (q.images.some((uri) => !uri)) {
+        warnings.push('Có hình ảnh trong câu không đọc được từ file Word — vị trí hình hiện khung cảnh báo.');
+      }
+    }
+
+    if (warnings.length > 0) q.parseWarnings = warnings;
+  };
+
   // HELPER 1: Parse a block as Part I (Multiple Choice A, B, C, D)
   const parseAsPart1 = (block: string): boolean => {
     // Extract Question Content (before option A)
@@ -219,10 +432,11 @@ export function parseCircular7991Html(htmlContent: string, defaultTitle = 'ĐỀ
       }
     }
 
-    const cleanContent = stripHtml(questionHeadHtml).replace(/^.*?Câu\s*\d+[:.\-\s]\s*/i, '').trim();
+    const cleanContent = htmlToRichText(questionHeadHtml).replace(/^.*?Câu\s*\d+[:.\-\s]\s*/i, '').trim();
 
     const optionKeys: OptionKey[] = ['A', 'B', 'C', 'D'];
     const parsedOptions: { key: OptionKey; text: string; isCorrect: boolean }[] = [];
+    const partWarnings: string[] = [];
     let detectedCorrect: OptionKey = 'A';
     let foundUnderline = false;
 
@@ -252,9 +466,14 @@ export function parseCircular7991Html(htmlContent: string, defaultTitle = 'ĐỀ
           foundUnderline = true;
         }
 
-        const cleanOptText = stripHtml(optSnippet)
+        const cleanOptText = htmlToRichText(optSnippet)
           .replace(new RegExp(`^\\s*${currentKey}[\\.\\:\\)\\/]\\s*`, 'i'), '')
           .trim();
+
+        if (!cleanOptText) {
+          // Never invent option content — keep a visible placeholder and warn.
+          partWarnings.push(`Phương án ${currentKey} không có nội dung đọc được trong file Word (có thể là công thức/hình chưa đọc được).`);
+        }
 
         parsedOptions.push({
           key: currentKey,
@@ -266,6 +485,7 @@ export function parseCircular7991Html(htmlContent: string, defaultTitle = 'ĐỀ
 
     // If options were not found, provide defaults rather than dropping the authored question
     if (parsedOptions.length === 0) {
+      partWarnings.push('Không tách được 4 phương án A–D trong file Word.');
       optionKeys.forEach((k) => {
         parsedOptions.push({
           key: k,
@@ -280,7 +500,7 @@ export function parseCircular7991Html(htmlContent: string, defaultTitle = 'ĐỀ
       opt.isCorrect = (opt.key === detectedCorrect);
     });
 
-    allQuestions.push({
+    const question: Question = {
       id: `q-p1-${globalOrder}-${Date.now()}`,
       order: globalOrder++,
       partType: 'part1_choice',
@@ -289,7 +509,10 @@ export function parseCircular7991Html(htmlContent: string, defaultTitle = 'ĐỀ
       correctAnswer: detectedCorrect,
       explanation: 'Đáp án được nhận diện tự động từ ký tự gạch chân trong file Word theo Thông tư 7991.',
       points: 0.25
-    });
+    };
+    if (partWarnings.length > 0) question.parseWarnings = partWarnings;
+    finalizeRich(question);
+    allQuestions.push(question);
 
     part1Count++;
     return true;
@@ -299,7 +522,7 @@ export function parseCircular7991Html(htmlContent: string, defaultTitle = 'ĐỀ
   const parseAsPart2 = (block: string): boolean => {
     const aStart = findMarkerStart(block, 'a', '\\.\\:\\)');
     const questionPromptHtml = aStart === -1 ? '' : block.substring(0, aStart);
-    const cleanPrompt = stripHtml(questionPromptHtml).replace(/^.*?Câu\s*\d+[:.\-\s]\s*/i, '').trim();
+    const cleanPrompt = htmlToRichText(questionPromptHtml).replace(/^.*?Câu\s*\d+[:.\-\s]\s*/i, '').trim();
 
     const subItemsBody = aStart === -1 ? block : block.substring(aStart);
     const subKeys: ('a' | 'b' | 'c' | 'd')[] = ['a', 'b', 'c', 'd'];
@@ -326,7 +549,7 @@ export function parseCircular7991Html(htmlContent: string, defaultTitle = 'ĐỀ
           new RegExp(`^\\s*${curKey}[\\.\\:\\)]?|${curKey}`, 'i')
         );
 
-        const rawText = stripHtml(itemSnippet);
+        const rawText = htmlToRichText(itemSnippet);
         const hasExplicitDung = /\(Đúng\)|\(Đ\)/i.test(rawText);
         const isCorrect = isUnderlined || hasExplicitDung;
 
@@ -354,7 +577,7 @@ export function parseCircular7991Html(htmlContent: string, defaultTitle = 'ĐỀ
       });
     }
 
-    allQuestions.push({
+    const question2: Question = {
       id: `q-p2-${globalOrder}-${Date.now()}`,
       order: globalOrder++,
       partType: 'part2_true_false',
@@ -364,7 +587,12 @@ export function parseCircular7991Html(htmlContent: string, defaultTitle = 'ĐỀ
       correctAnswer: subItems.map(si => `${si.key}:${si.isCorrect ? 'Đ' : 'S'}`).join(' '),
       explanation: 'Nhận diện theo ký tự gạch chân: Ý có ký tự gạch chân là ĐÚNG, ý không gạch chân là SAI.',
       points: 1.0
-    });
+    };
+    if (subItems.length === 0) {
+      question2.parseWarnings = ['Không tách được các ý a)–d) trong file Word.'];
+    }
+    finalizeRich(question2);
+    allQuestions.push(question2);
 
     part2Count++;
     return true;
@@ -372,7 +600,7 @@ export function parseCircular7991Html(htmlContent: string, defaultTitle = 'ĐỀ
 
   // HELPER 3: Parse a block as Part III (Short Answer)
   const parseAsPart3 = (block: string): boolean => {
-    const rawText = stripHtml(block);
+    const rawText = htmlToRichText(block);
     // This question's own number ("Câu N.") — used to look up its key answer.
     const numMatch = rawText.match(/Câu\s*(\d+)\s*[:.]/i);
     const questionNum = numMatch ? parseInt(numMatch[1], 10) : -1;
@@ -392,8 +620,9 @@ export function parseCircular7991Html(htmlContent: string, defaultTitle = 'ĐỀ
     // Preferred source: the answer-key section of the same file (verbatim).
     const keyAnswer = questionNum !== -1 ? part3KeyAnswers.get(questionNum) : undefined;
 
-    let shortAnswer = '1234'; // Default per user specification A.1234
+    let shortAnswer = '1234'; // Fallback marker when no answer exists in the file
     let explanation = '';
+    let answerMissing = false;
     if (keyAnswer) {
       shortAnswer = keyAnswer;
       explanation = `Đáp án trích từ phần ĐÁP ÁN của file Word: ${shortAnswer}.`;
@@ -404,11 +633,16 @@ export function parseCircular7991Html(htmlContent: string, defaultTitle = 'ĐỀ
 
       if (answerMatch && answerMatch[1]) {
         shortAnswer = answerMatch[1].trim().slice(0, 4);
+        explanation = `Đáp án nhận diện trong thân câu: ${shortAnswer}.`;
+      } else {
+        // Nothing truthful was found — keep the legacy sentinel BUT flag it
+        // loudly instead of pretending it is a real answer.
+        answerMissing = true;
+        explanation = 'Chưa tìm thấy đáp án trong file Word — đang để tạm 1234, Thầy vui lòng kiểm tra và sửa lại.';
       }
-      explanation = `Đáp án số 4 ký tự chuẩn: ${shortAnswer}. Thí sinh nhập đúng 4 chữ số.`;
     }
 
-    allQuestions.push({
+    const question3: Question = {
       id: `q-p3-${globalOrder}-${Date.now()}`,
       order: globalOrder++,
       partType: 'part3_short_answer',
@@ -418,7 +652,12 @@ export function parseCircular7991Html(htmlContent: string, defaultTitle = 'ĐỀ
       options: [],
       explanation,
       points: 0.25
-    });
+    };
+    if (answerMissing) {
+      question3.parseWarnings = ['Chưa tìm thấy đáp án Phần III trong file — đáp án đang để tạm 1234.'];
+    }
+    finalizeRich(question3);
+    allQuestions.push(question3);
 
     part3Count++;
     return true;
@@ -468,26 +707,101 @@ export function parseCircular7991Html(htmlContent: string, defaultTitle = 'ĐỀ
   // Compute breakdown string e.g. "18-4-6-0"
   const breakdown = `${part1Count}-${part2Count}-${part3Count}-0`;
 
-  // Extract title candidate if present
+  // --- Metadata from the file itself (Phase B) -----------------------------
+  // Subject + duration from the exam header; per-part weights from the
+  // "mỗi câu X điểm" statements (they live in the part headings, most
+  // reliably in the answer-key section). Hardcoded guesses are last resort.
+  const fullPlainText = stripHtml(normalizedHtml);
+  const headerText = fullPlainText.substring(0, 2500);
+
+  let detectedSubject: string | null = null;
+  const subjectMatch = headerText.match(/M[ôo]n(?:\s*thi)?\s*[:\-]?\s*([^\n]{2,60})/i);
+  if (subjectMatch) {
+    const rawSubject = subjectMatch[1].split(/thời gian/i)[0].trim().replace(/\s+/g, ' ');
+    const up = rawSubject.toUpperCase();
+    if (/TOÁN/.test(up)) detectedSubject = 'Toán học 12';
+    else if (/VẬT\s*L[ÍI]|VẬT\s*LÝ/.test(up)) detectedSubject = 'Vật lí 12';
+    else if (/H[ÓO]A/.test(up)) detectedSubject = 'Hóa học 12';
+    else if (/SINH/.test(up)) detectedSubject = 'Sinh học 12';
+    else if (/CÔNG\s*NGHỆ/.test(up)) detectedSubject = 'Công nghệ 12';
+    else if (rawSubject.length >= 2) detectedSubject = rawSubject.charAt(0).toUpperCase() + rawSubject.slice(1);
+  }
+
+  let detectedDuration: number | null = null;
+  const durationMatch = headerText.match(/Thời gian(?:\s*làm bài)?\s*[:\-]?\s*(\d{1,3})\s*phút/i);
+  if (durationMatch) {
+    const d = parseInt(durationMatch[1], 10);
+    if (d >= 5 && d <= 300) detectedDuration = d;
+  }
+
+  const weightFor = (roman: 'I' | 'II' | 'III', fallback: number): number => {
+    const re = new RegExp(`PHẦN\\s*${roman}\\b[\\s\\S]{0,220}?mỗi câu\\s*([\\d]+(?:[.,]\\d+)?)\\s*điểm`, 'i');
+    const m = fullPlainText.match(re);
+    if (m) {
+      const v = parseFloat(m[1].replace(',', '.'));
+      if (v > 0 && v <= 5) return v;
+    }
+    return fallback;
+  };
+  const part1Weight = weightFor('I', 0.25);
+  const part2Weight = weightFor('II', 1.0);
+  // Toán-style structure (12 MCQ + Phần III present) → Phần III = 0,5đ/câu.
+  const part3Weight = weightFor('III', part1Count === 12 && part3Count > 0 ? 0.5 : 0.25);
+
+  allQuestions.forEach((q) => {
+    if (q.partType === 'part1_choice') q.points = part1Weight;
+    else if (q.partType === 'part2_true_false') q.points = part2Weight;
+    else if (q.partType === 'part3_short_answer') q.points = part3Weight;
+  });
+
+  // Phần III rule check (warnings only — never block the import).
+  const part3Violations = findPart3Violations(allQuestions);
+  if (part3Violations.length > 0) {
+    allQuestions.forEach((q) => {
+      if (q.partType !== 'part3_short_answer') return;
+      const answer = (q.shortAnswerCorrect || q.correctAnswer || '').toString();
+      const reason = validatePart3Answer(answer);
+      if (reason) {
+        q.parseWarnings = [...(q.parseWarnings || []), `Đáp án Phần III "${answer}": ${reason}`];
+      }
+    });
+  }
+
+  const importWarnings: string[] = [...(extras?.warnings || [])];
+  allQuestions.forEach((q) => {
+    (q.parseWarnings || []).forEach((w) => {
+      importWarnings.push(`Câu ${q.order}: ${w}`);
+    });
+  });
+
+  // Extract title candidate if present. Prefer the actual "ĐỀ THI…" header
+  // line over an office header line ("SỞ GD&ĐT…") when both are present.
   let extractedTitle = defaultTitle;
-  const topText = stripHtml(normalizedHtml.substring(0, 500));
-  const titleCandidate = topText.split('\n').map(l => l.trim()).filter(Boolean)[0];
-  if (titleCandidate && titleCandidate.length < 90 && !/^(PHẦN|Câu)/i.test(titleCandidate)) {
+  const topText = stripHtml(normalizedHtml.substring(0, 900));
+  const topLines = topText.split('\n').map(l => l.trim()).filter(Boolean);
+  const examLine = topLines.find((l) => /ĐỀ\s+(THI|KIỂM\s*TRA|ÔN|LUYỆN)/i.test(l) && l.length < 120);
+  const titleCandidate = examLine || topLines[0];
+  if (titleCandidate && titleCandidate.length < 120 && !/^(PHẦN|Câu)/i.test(titleCandidate)) {
     extractedTitle = titleCandidate;
   }
 
   return {
     title: extractedTitle,
-    subject: 'Công nghệ 12',
+    subject: detectedSubject || 'Công nghệ 12',
     grade: 'Lớp 12',
     breakdown,
     totalPoints: 10,
-    durationMinutes: 50,
+    durationMinutes: detectedDuration || 50,
     questions: allQuestions,
     part1Count,
     part2Count,
     part3Count,
-    rawHtml: htmlContent
+    rawHtml: htmlContent,
+    part1PointPerQuestion: part1Weight,
+    part2PointPerQuestion: part2Weight,
+    part3PointPerQuestion: part3Weight,
+    part3Violations,
+    importWarnings
   };
 }
 
@@ -497,6 +811,26 @@ export function parseCircular7991Html(htmlContent: string, defaultTitle = 'ĐỀ
  */
 export async function parseDocxFile(file: File): Promise<ParsedExamResult> {
   const arrayBuffer = await file.arrayBuffer();
+
+  // Pre-process the .docx package: OMML → ⟦MATH⟧ tokens, images → ⟦img:⟧
+  // tokens (bound to their question/option), so mammoth's HTML carries the
+  // rich content instead of dropping it. Any failure falls back to the
+  // legacy mammoth-only path.
+  let mammothBuffer: ArrayBuffer = arrayBuffer;
+  let extras: ParseExtras | undefined;
+  try {
+    const pre = await preprocessDocx(arrayBuffer);
+    if (pre) {
+      mammothBuffer = pre.arrayBuffer;
+      extras = {
+        mathSegments: pre.mathSegments,
+        imageDataUris: pre.imageDataUris,
+        warnings: pre.warnings,
+      };
+    }
+  } catch (err) {
+    console.warn('[WordParser] Tiền xử lý .docx thất bại, dùng đường mammoth thuần:', err);
+  }
 
   const options = {
     styleMap: [
@@ -508,11 +842,18 @@ export async function parseDocxFile(file: File): Promise<ParsedExamResult> {
     ]
   };
 
-  const result = await mammoth.convertToHtml({ arrayBuffer }, options);
+  // Mammoth's browser build reads `arrayBuffer`; its Node build reads
+  // `buffer`. Pass both so the parser behaves identically in the app and in
+  // the Node regression harness.
+  const mammothInput: Record<string, unknown> = { arrayBuffer: mammothBuffer };
+  if (typeof Buffer !== 'undefined') {
+    mammothInput.buffer = Buffer.from(mammothBuffer);
+  }
+  const result = await mammoth.convertToHtml(mammothInput as any, options);
   const html = result.value;
 
   const defaultTitle = file.name.replace(/\.[^/.]+$/, '').replace(/_/g, ' ').toUpperCase();
-  return parseCircular7991Html(html, defaultTitle);
+  return parseCircular7991Html(html, defaultTitle, extras);
 }
 
 /**
