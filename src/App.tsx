@@ -11,6 +11,7 @@ import { TopNavbar } from './components/TopNavbar';
 import { Sidebar } from './components/Sidebar';
 import { DashboardView } from './components/DashboardView';
 import { QuizManagementView } from './components/QuizManagementView';
+import { ExamMixerView } from './components/ExamMixerView';
 
 import { OnlineSessionsView } from './components/OnlineSessionsView';
 import { Live500StressTestMonitor } from './components/Live500StressTestMonitor';
@@ -683,6 +684,19 @@ export default function App() {
                     setQuizzes(updatedQuizzes);
                     setSessions(updatedSessions);
                     triggerAutoBackup(updatedQuizzes, classrooms, updatedSessions);
+                  }}
+                />
+              )}
+
+              {currentTab === 'exam-mixer' && (
+                <ExamMixerView
+                  quizzes={quizzes}
+                  onSaveVariants={(variants) => {
+                    if (!variants || variants.length === 0) return;
+                    const updatedQuizzes = [...variants, ...quizzes];
+                    setQuizzes(updatedQuizzes);
+                    triggerAutoBackup(updatedQuizzes, classrooms, sessions);
+                    soundEffects.playCorrect();
                   }}
                 />
               )}

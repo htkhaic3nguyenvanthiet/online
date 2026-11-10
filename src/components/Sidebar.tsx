@@ -13,7 +13,8 @@ import {
   Activity,
   CheckCircle2,
   Award,
-  ClipboardCheck
+  ClipboardCheck,
+  Shuffle
 } from 'lucide-react';
 import { ActiveTab } from '../types/quiz';
 import { soundEffects } from '../utils/soundEffects';
@@ -32,6 +33,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const menuItems: { id: ActiveTab; label: string; icon: React.ReactNode; badge?: string; badgeColor?: string; isSpecial?: boolean }[] = [
     { id: 'dashboard', label: 'Trang chủ', icon: <Home className="w-5 h-5" /> },
     { id: 'quizzes', label: 'Kho đề kiểm tra', icon: <FolderKanban className="w-5 h-5" />, badge: 'TT 7991', badgeColor: 'bg-emerald-600' },
+    { id: 'exam-mixer', label: 'Trộn đề', icon: <Shuffle className="w-5 h-5" />, badge: 'Đề giấy', badgeColor: 'bg-sky-600' },
     { id: 'online-sessions', label: 'Giao đề Online', icon: <Send className="w-5 h-5" />, badge: 'Đang mở', badgeColor: 'bg-emerald-500' },
     {
       id: 'attendance-summary',

@@ -204,6 +204,7 @@ export interface ConcurrentSystemMetrics {
 export type ActiveTab =
   | 'dashboard'
   | 'quizzes'
+  | 'exam-mixer'
   | 'online-sessions'
   | 'attendance-summary'
   | 'classes'
