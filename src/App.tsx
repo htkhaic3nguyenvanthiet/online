@@ -698,6 +698,16 @@ export default function App() {
                     triggerAutoBackup(updatedQuizzes, classrooms, sessions);
                     soundEffects.playCorrect();
                   }}
+                  onRemoveVariants={(ids) => {
+                    // Xoá sạch trang trộn đề: chỉ gỡ đúng các biến thể của phiên
+                    // trộn đó — KHÔNG đụng tới phiên thi/bài nộp (khác với xoá đề thủ công).
+                    if (!ids || ids.length === 0) return;
+                    const idSet = new Set(ids);
+                    const updatedQuizzes = quizzes.filter((q) => !idSet.has(q.id));
+                    if (updatedQuizzes.length === quizzes.length) return;
+                    setQuizzes(updatedQuizzes);
+                    triggerAutoBackup(updatedQuizzes, classrooms, sessions);
+                  }}
                 />
               )}
 

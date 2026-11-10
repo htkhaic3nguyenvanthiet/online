@@ -45,6 +45,9 @@ export interface Question {
   // Cảnh báo phát sinh khi import câu này (phương án rỗng, đáp án Phần III sai
   // quy tắc số thuần 1–4 ký tự, công thức chưa đọc được...). Chỉ để hiển thị.
   parseWarnings?: string[];
+  // Các cảnh báo đọc file mà giáo viên ĐÃ mở câu ra kiểm tra và xác nhận ổn
+  // ngay trong khung sửa đề gốc của mục Trộn đề (chuyển từ parseWarnings sang).
+  acknowledgedParseWarnings?: string[];
 }
 
 export interface Quiz {

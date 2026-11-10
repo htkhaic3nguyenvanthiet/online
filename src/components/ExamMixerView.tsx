@@ -14,6 +14,7 @@ import {
   Loader2,
   Copy,
   ChevronDown,
+  Trash2,
 } from 'lucide-react';
 import { Quiz, ActiveTab } from '../types/quiz';
 import { soundEffects } from '../utils/soundEffects';
@@ -30,22 +31,26 @@ import {
   MixerVariantKey,
   buildMixerAnswerKey,
   exportVariantPaperDocx,
-  exportVariantSolutionsDocx,
   exportAnswerKeyDocx,
   exportMixerBundleZip,
   makeVariantQrDataUrl,
   triggerDownload,
 } from '../utils/paperExporter';
-import { QRAppFormat, exportGradingExcelXlsx } from '../utils/mixerGrading';
+import { QRAppFormat } from '../utils/mixerGrading';
+import { planMixerWipe, SavedVariantRef } from '../utils/mixerWipe';
+import { validateMixerSource } from '../utils/mixerValidation';
 import {
   PhieuQMCode,
   resolvePhieuQMInfo,
   loadPhieuQMDataUrl,
 } from '../utils/phieuQm';
+import { MixerSourceEditor } from './MixerSourceEditor';
 
 interface ExamMixerViewProps {
   quizzes: Quiz[];
   onSaveVariants?: (variants: Quiz[]) => void;
+  /** Gỡ khỏi Kho đề đúng các biến thể đã lưu trong phiên trộn này (xoá sạch dữ liệu). */
+  onRemoveVariants?: (ids: string[]) => void;
   onNavigate?: (tab: ActiveTab) => void;
 }
 
@@ -93,7 +98,7 @@ function Toggle({
   );
 }
 
-export const ExamMixerView: React.FC<ExamMixerViewProps> = ({ quizzes, onSaveVariants }) => {
+export const ExamMixerView: React.FC<ExamMixerViewProps> = ({ quizzes, onSaveVariants, onRemoveVariants }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [source, setSource] = useState<Quiz | null>(null);
@@ -111,11 +116,22 @@ export const ExamMixerView: React.FC<ExamMixerViewProps> = ({ quizzes, onSaveVar
   const [embedPhieu, setEmbedPhieu] = useState(true);
   const [phieuCode, setPhieuCode] = useState<PhieuQMCode>('AUTO');
   const [qrFormat, setQrFormat] = useState<QRAppFormat>('QM2025');
-  const [embedQr, setEmbedQr] = useState(true);
 
   const [results, setResults] = useState<MixerResult[]>([]);
   const [busyAction, setBusyAction] = useState<string>('');
   const [error, setError] = useState('');
+  const [exportWarnings, setExportWarnings] = useState<string[]>([]);
+  const [wipeNotice, setWipeNotice] = useState('');
+  /** Yêu cầu khung sửa mở + cuộn tới một câu (khi bấm vào lỗi trong danh sách đạt chuẩn). */
+  const [focusRequest, setFocusRequest] = useState<{ index: number; nonce: number } | null>(null);
+  /** Các biến thể đã lưu vào Kho TRONG phiên trộn này — chỉ những đề này mới bị gỡ khi xoá sạch. */
+  const savedVariantRefs = useRef<SavedVariantRef[]>([]);
+
+  /** Cổng chuẩn 100%: chạy trên bản làm việc hiện tại (sau mọi lần sửa trong khung soạn). */
+  const validation = useMemo(() => validateMixerSource(source), [source]);
+
+  const pushExportWarning = (message: string) =>
+    setExportWarnings((prev) => (prev.includes(message) ? prev : [...prev, message]));
 
   const counts = useMemo(() => {
     if (!source) return null;
@@ -130,17 +146,29 @@ export const ExamMixerView: React.FC<ExamMixerViewProps> = ({ quizzes, onSaveVar
   }, [source]);
 
   const applySource = (quiz: Quiz, warnings: string[] = []) => {
-    setSource(quiz);
+    // BẢN LÀM VIỆC: sao chép sâu để khung xem & sửa đề gốc không bao giờ
+    // sửa trực tiếp bản trong Kho đề kiểm tra.
+    const working: Quiz = JSON.parse(JSON.stringify(quiz));
+    setSource(working);
     setSourceWarnings(warnings);
     setResults([]);
     setError('');
-    setBaseCodeText(String(extractBaseCode(quiz)));
+    setExportWarnings([]);
+    setWipeNotice('');
+    setFocusRequest(null);
+    setBaseCodeText(String(extractBaseCode(working)));
     setMeta((m) => ({
       ...m,
-      subjectName: quiz.subject || m.subjectName,
-      durationMinutes: quiz.durationMinutes || m.durationMinutes,
-      examSubtitle: quiz.title || m.examSubtitle,
+      subjectName: working.subject || m.subjectName,
+      durationMinutes: working.durationMinutes || m.durationMinutes,
+      examSubtitle: working.title || m.examSubtitle,
     }));
+  };
+
+  /** Sửa đề gốc trong khung soạn: cập nhật bản làm việc; các mã đã trộn bị huỷ để trộn lại theo bản mới. */
+  const handleSourceEdit = (updated: Quiz) => {
+    setSource(updated);
+    setResults([]);
   };
 
   const handleUpload = async (file: File) => {
@@ -187,6 +215,10 @@ export const ExamMixerView: React.FC<ExamMixerViewProps> = ({ quizzes, onSaveVar
       setError('Thầy chọn đề gốc trước khi trộn nhé.');
       return;
     }
+    if (!validation.ok) {
+      setError('Đề chưa đạt chuẩn 100% — Thầy sửa các điểm đã liệt kê ngay dưới nút trộn (bấm vào từng dòng để nhảy tới câu cần sửa) rồi trộn lại nhé.');
+      return;
+    }
     try {
       const generated = generateShuffledVariants(source, {
         count: Math.min(12, Math.max(1, variantCount || 1)),
@@ -204,6 +236,8 @@ export const ExamMixerView: React.FC<ExamMixerViewProps> = ({ quizzes, onSaveVar
         }))
       );
       setError('');
+      setExportWarnings([]);
+      setWipeNotice('');
       soundEffects.playCorrect();
     } catch (err: any) {
       setError('Trộn đề lỗi: ' + (err?.message || 'không rõ nguyên nhân'));
@@ -233,18 +267,12 @@ export const ExamMixerView: React.FC<ExamMixerViewProps> = ({ quizzes, onSaveVar
       const { phieuDataUrl } = await getPhieu();
       const blob = await exportVariantPaperDocx(item.result, meta, {
         qrFormat,
-        embedQrInPaper: embedQr,
+        onExportWarning: pushExportWarning,
         phieu: phieuDataUrl
           ? { dataUrl: phieuDataUrl, widthEmu: 5943600, heightEmu: 2952750 }
           : null,
       });
       triggerDownload(blob, `De_${item.result.code}.docx`);
-    });
-
-  const downloadSolutions = (item: MixerResult) =>
-    withBusy('sol-' + item.result.code, async () => {
-      const blob = await exportVariantSolutionsDocx(item.result, meta, {});
-      triggerDownload(blob, `De_${item.result.code}_Co_dap_an.docx`);
     });
 
   const downloadQr = (item: MixerResult) =>
@@ -262,24 +290,23 @@ export const ExamMixerView: React.FC<ExamMixerViewProps> = ({ quizzes, onSaveVar
       const { phieuInfo, phieuDataUrl } = await getPhieu();
       const blob = await exportMixerBundleZip(source, String(extractBaseCode(source)), results.map((r) => r.result), meta, {
         qrFormat,
-        embedQrInPaper: embedQr,
+        onExportWarning: pushExportWarning,
         phieuInfo,
         phieuDataUrl,
       });
+      // Tải xuống TRƯỚC, xoá sạch SAU — để việc xoá không làm hỏng lượt tải.
       triggerDownload(blob, `Bo_de_giay_${meta.subjectName.replace(/\s+/g, '_')}_${results[0]?.result.code}-${results[results.length - 1]?.result.code}.zip`);
       soundEffects.playCorrect();
+      performWipe('Đã tải trọn bộ và xóa sạch dữ liệu khỏi trang.');
     });
 
   const downloadAnswerKey = () =>
     withBusy('answerkey', async () => {
-      const blob = await exportAnswerKeyDocx(results.map((r) => r.key), meta);
-      triggerDownload(blob, 'Dap_an_chuan.docx');
-    });
-
-  const downloadExcel = () =>
-    withBusy('excel', async () => {
-      const blob = await exportGradingExcelXlsx(results.map((r) => r.key), 'QM2025');
-      triggerDownload(blob, 'Excel_QM_2025.xlsx');
+      if (!source) return;
+      const blob = await exportAnswerKeyDocx(results.map((r) => r.key), meta, source, {
+        onExportWarning: pushExportWarning,
+      });
+      triggerDownload(blob, 'Dap_an.docx');
     });
 
   const downloadPhieu = () =>
@@ -299,8 +326,54 @@ export const ExamMixerView: React.FC<ExamMixerViewProps> = ({ quizzes, onSaveVar
 
   const saveToLibrary = () => {
     if (!onSaveVariants || results.length === 0) return;
-    onSaveVariants(results.map((r) => r.result.quiz));
+    const variants = results.map((r) => r.result.quiz);
+    onSaveVariants(variants);
+    // Ghi lại đúng các biến thể của phiên này để nút xoá sạch chỉ gỡ chúng.
+    for (const r of results) {
+      const srcId = r.result.quiz.shuffleMeta?.sourceQuizId;
+      if (srcId && !savedVariantRefs.current.some((x) => x.id === r.result.quiz.id)) {
+        savedVariantRefs.current.push({ id: r.result.quiz.id, sourceQuizId: srcId });
+      }
+    }
     soundEffects.playCorrect();
+  };
+
+  /**
+   * XOÁ SẠCH dữ liệu trang trộn đề (máy dùng chung ở trường — không lưu vết):
+   * mọi state của phiên trộn trở về trạng thái trống ban đầu, đồng thời gỡ khỏi
+   * Kho đề đúng các biến thể đã lưu trong phiên này. KHÔNG đụng tới: cấu hình
+   * Kho Google, cài đặt tài khoản, các đề khác trong kho, phiên thi, bài nộp.
+   */
+  const performWipe = (notice: string) => {
+    if (onRemoveVariants) {
+      const ids = planMixerWipe(quizzes, savedVariantRefs.current);
+      if (ids.length > 0) onRemoveVariants(ids);
+    }
+    savedVariantRefs.current = [];
+    setSource(null);
+    setSourceWarnings([]);
+    setResults([]);
+    setError('');
+    setExportWarnings([]);
+    setVariantCount(4);
+    setBaseCodeText('101');
+    setShuffleP1(true);
+    setShuffleOptions(true);
+    setShuffleP2Items(true);
+    setShuffleP3(false);
+    setMeta({ ...DEFAULT_PAPER_META });
+    setEmbedPhieu(true);
+    setPhieuCode('AUTO');
+    setQrFormat('QM2025');
+    setBusyAction('');
+    setParsing(false);
+    setFocusRequest(null);
+    setWipeNotice(notice);
+  };
+
+  const manualWipe = () => {
+    performWipe('Đã xóa sạch dữ liệu khỏi trang.');
+    soundEffects.playClick();
   };
 
   const copyKeyText = (item: MixerResult) => {
@@ -317,15 +390,18 @@ export const ExamMixerView: React.FC<ExamMixerViewProps> = ({ quizzes, onSaveVar
         </div>
         <div>
           <h1 className="text-2xl font-extrabold text-slate-800">Trộn đề</h1>
-          <p className="text-sm text-slate-500 font-medium">
-            Tạo bộ đề giấy nhiều mã để in — dùng cho kiểm tra thật trên lớp: đề Word từng mã, file đáp án chuẩn,
-            mã QR chấm thi và phiếu trả lời trắc nghiệm, đúng combo như trang trộn đề EduMix.
-          </p>
-          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 mt-2 inline-block font-medium">
-            Khác với <b>Giao đề Online</b> (học sinh làm bài trên máy, đề tự xáo theo từng em) — mục này sản xuất
-            <b> bộ đề GIẤY để in và phát trên lớp</b>.
-          </p>
         </div>
+        {(source || results.length > 0) && (
+          <button
+            type="button"
+            onClick={manualWipe}
+            disabled={busyAction !== ''}
+            className="ml-auto shrink-0 flex items-center gap-2 bg-white border border-rose-300 text-rose-700 hover:bg-rose-50 font-bold rounded-xl px-4 py-2.5 text-sm disabled:opacity-50"
+            title="Xoá toàn bộ dữ liệu đã nạp trên trang trộn đề (kể cả các mã đã lưu vào Kho trong phiên này)"
+          >
+            <Trash2 className="w-4 h-4" /> Xóa sạch dữ liệu
+          </button>
+        )}
       </div>
 
       {error && (
@@ -334,11 +410,92 @@ export const ExamMixerView: React.FC<ExamMixerViewProps> = ({ quizzes, onSaveVar
         </div>
       )}
 
+      {exportWarnings.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-3 text-sm font-medium space-y-1">
+          {exportWarnings.map((w, i) => (
+            <p key={i} className="flex items-start gap-2">
+              <AlertTriangle className="w-4.5 h-4.5 mt-0.5 shrink-0" /> {w}
+            </p>
+          ))}
+        </div>
+      )}
+
+      {wipeNotice && (
+        <div className="flex items-start gap-2 bg-teal-50 border border-teal-200 text-teal-800 rounded-xl px-4 py-3 text-sm font-medium">
+          <CheckCircle2 className="w-4.5 h-4.5 mt-0.5 shrink-0" /> {wipeNotice}
+        </div>
+      )}
+
+      {/* 1. Thông tin in trên đề — panel đầu tiên theo yêu cầu của Thầy */}
+      <section className={panelCls}>
+        <h2 className="font-extrabold text-slate-800 flex items-center gap-2 mb-3">
+          <Printer className="w-5 h-5 text-teal-700" /> 1. Thông tin in trên tờ đề &amp; phiếu
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className={labelCls}>Sở / Phòng</label>
+            <input className={inputCls} value={meta.departmentName} onChange={(e) => setMeta({ ...meta, departmentName: e.target.value })} />
+          </div>
+          <div>
+            <label className={labelCls}>Trường</label>
+            <input className={inputCls} value={meta.schoolName} onChange={(e) => setMeta({ ...meta, schoolName: e.target.value })} />
+          </div>
+          <div>
+            <label className={labelCls}>Năm học</label>
+            <input className={inputCls} value={meta.schoolYear} onChange={(e) => setMeta({ ...meta, schoolYear: e.target.value })} />
+          </div>
+          <div>
+            <label className={labelCls}>Tên kỳ kiểm tra</label>
+            <input className={inputCls} value={meta.examTitle} onChange={(e) => setMeta({ ...meta, examTitle: e.target.value })} />
+          </div>
+          <div>
+            <label className={labelCls}>Môn thi</label>
+            <input className={inputCls} value={meta.subjectName} onChange={(e) => setMeta({ ...meta, subjectName: e.target.value })} />
+          </div>
+          <div>
+            <label className={labelCls}>Thời gian làm bài (phút)</label>
+            <input type="number" min={1} className={inputCls} value={meta.durationMinutes} onChange={(e) => setMeta({ ...meta, durationMinutes: parseInt(e.target.value, 10) || 50 })} />
+          </div>
+          <div className="md:col-span-2">
+            <label className={labelCls}>Dòng phụ (tên đề / chủ đề)</label>
+            <input className={inputCls} value={meta.examSubtitle} onChange={(e) => setMeta({ ...meta, examSubtitle: e.target.value })} />
+          </div>
+          <div>
+            <label className={labelCls}>Giáo viên ra đề</label>
+            <input className={inputCls} value={meta.teacherName || ''} onChange={(e) => setMeta({ ...meta, teacherName: e.target.value })} />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+          <div>
+            <label className={labelCls}>Phiếu trả lời QM 2025</label>
+            <select className={inputCls} value={phieuCode} onChange={(e) => setPhieuCode(e.target.value as PhieuQMCode)}>
+              <option value="AUTO">Tự động theo môn</option>
+              <option value="TOAN">Phiếu Toán (12-4-6)</option>
+              <option value="KHTN_DIA">Phiếu KHTN &amp; Địa (18-4-6)</option>
+              <option value="NGOAI_NGU">Phiếu Ngoại ngữ (40 câu)</option>
+              <option value="KHXH_CN_TIN">Phiếu KHXH, Công nghệ, Tin (24-6-0)</option>
+            </select>
+          </div>
+          <div>
+            <label className={labelCls}>Định dạng QR chấm thi</label>
+            <select className={inputCls} value={qrFormat} onChange={(e) => setQrFormat(e.target.value as QRAppFormat)}>
+              <option value="QM2025">QM 2025 (mặc định)</option>
+              <option value="TNMAKER">TNMaker</option>
+              <option value="AZOTA">Azota</option>
+              <option value="UNT">UnT Dạy Học</option>
+            </select>
+          </div>
+          <div className="flex flex-col justify-end">
+            <Toggle checked={embedPhieu} onChange={setEmbedPhieu} label="Nhúng phiếu trả lời vào trang 1 của đề" />
+          </div>
+        </div>
+      </section>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* 1. Đề gốc */}
+        {/* 2. Đề gốc */}
         <section className={panelCls}>
           <h2 className="font-extrabold text-slate-800 flex items-center gap-2 mb-3">
-            <FileText className="w-5 h-5 text-teal-700" /> 1. Chọn đề gốc
+            <FileText className="w-5 h-5 text-teal-700" /> 2. Chọn đề gốc
           </h2>
           <label className={labelCls}>Từ Kho đề kiểm tra</label>
           <select
@@ -399,10 +556,10 @@ export const ExamMixerView: React.FC<ExamMixerViewProps> = ({ quizzes, onSaveVar
           )}
         </section>
 
-        {/* 2. Cấu hình trộn */}
+        {/* 3. Cấu hình trộn */}
         <section className={panelCls}>
           <h2 className="font-extrabold text-slate-800 flex items-center gap-2 mb-3">
-            <Shuffle className="w-5 h-5 text-teal-700" /> 2. Cấu hình trộn
+            <Shuffle className="w-5 h-5 text-teal-700" /> 3. Cấu hình trộn
           </h2>
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -438,79 +595,50 @@ export const ExamMixerView: React.FC<ExamMixerViewProps> = ({ quizzes, onSaveVar
           <button
             type="button"
             onClick={handleGenerate}
-            disabled={!source}
+            disabled={!source || !validation.ok}
             className="mt-4 w-full bg-teal-700 hover:bg-teal-800 disabled:opacity-40 text-white font-extrabold rounded-xl py-3 flex items-center justify-center gap-2 transition"
           >
             <Shuffle className="w-5 h-5" /> TRỘN ĐỀ NGAY
           </button>
+          {source && !validation.ok && (
+            <div className="mt-3 bg-rose-50 border border-rose-200 rounded-xl px-4 py-3">
+              <p className="text-sm font-extrabold text-rose-700 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                Chưa đạt chuẩn — cần sửa {validation.issues.length} điểm mới trộn được:
+              </p>
+              <ul className="mt-1.5 space-y-1">
+                {validation.issues.map((issue, i) =>
+                  issue.questionIndex >= 0 ? (
+                    <li key={i}>
+                      <button
+                        type="button"
+                        onClick={() => setFocusRequest({ index: issue.questionIndex, nonce: Date.now() })}
+                        className="text-left text-sm font-medium text-rose-700 underline decoration-rose-300 underline-offset-2 hover:text-rose-900"
+                      >
+                        {issue.message} — bấm để sửa
+                      </button>
+                    </li>
+                  ) : (
+                    <li key={i} className="text-sm font-medium text-rose-700">
+                      {issue.message}
+                    </li>
+                  )
+                )}
+              </ul>
+            </div>
+          )}
+          {source && validation.ok && (
+            <p className="mt-3 flex items-center gap-2 bg-teal-50 border border-teal-200 text-teal-800 rounded-xl px-4 py-2.5 text-sm font-bold">
+              <CheckCircle2 className="w-4 h-4 shrink-0" /> Đề đã đạt chuẩn 100% — sẵn sàng trộn.
+            </p>
+          )}
         </section>
       </div>
 
-      {/* 3. Thông tin in trên đề */}
-      <section className={panelCls}>
-        <h2 className="font-extrabold text-slate-800 flex items-center gap-2 mb-3">
-          <Printer className="w-5 h-5 text-teal-700" /> 3. Thông tin in trên tờ đề &amp; phiếu
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className={labelCls}>Sở / Phòng</label>
-            <input className={inputCls} value={meta.departmentName} onChange={(e) => setMeta({ ...meta, departmentName: e.target.value })} />
-          </div>
-          <div>
-            <label className={labelCls}>Trường</label>
-            <input className={inputCls} value={meta.schoolName} onChange={(e) => setMeta({ ...meta, schoolName: e.target.value })} />
-          </div>
-          <div>
-            <label className={labelCls}>Năm học</label>
-            <input className={inputCls} value={meta.schoolYear} onChange={(e) => setMeta({ ...meta, schoolYear: e.target.value })} />
-          </div>
-          <div>
-            <label className={labelCls}>Tên kỳ kiểm tra</label>
-            <input className={inputCls} value={meta.examTitle} onChange={(e) => setMeta({ ...meta, examTitle: e.target.value })} />
-          </div>
-          <div>
-            <label className={labelCls}>Môn thi</label>
-            <input className={inputCls} value={meta.subjectName} onChange={(e) => setMeta({ ...meta, subjectName: e.target.value })} />
-          </div>
-          <div>
-            <label className={labelCls}>Thời gian làm bài (phút)</label>
-            <input type="number" min={1} className={inputCls} value={meta.durationMinutes} onChange={(e) => setMeta({ ...meta, durationMinutes: parseInt(e.target.value, 10) || 50 })} />
-          </div>
-          <div className="md:col-span-2">
-            <label className={labelCls}>Dòng phụ (tên đề / chủ đề)</label>
-            <input className={inputCls} value={meta.examSubtitle} onChange={(e) => setMeta({ ...meta, examSubtitle: e.target.value })} />
-          </div>
-          <div>
-            <label className={labelCls}>Giáo viên ra đề</label>
-            <input className={inputCls} value={meta.teacherName || ''} onChange={(e) => setMeta({ ...meta, teacherName: e.target.value })} />
-          </div>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-          <div>
-            <label className={labelCls}>Phiếu trả lời QM 2025</label>
-            <select className={inputCls} value={phieuCode} onChange={(e) => setPhieuCode(e.target.value as PhieuQMCode)}>
-              <option value="AUTO">Tự động theo môn</option>
-              <option value="TOAN">Phiếu Toán (12-4-6)</option>
-              <option value="KHTN_DIA">Phiếu KHTN &amp; Địa (18-4-6)</option>
-              <option value="NGOAI_NGU">Phiếu Ngoại ngữ (40 câu)</option>
-              <option value="KHXH_CN_TIN">Phiếu KHXH, Công nghệ, Tin (24-6-0)</option>
-            </select>
-          </div>
-          <div>
-            <label className={labelCls}>Định dạng QR chấm thi</label>
-            <select className={inputCls} value={qrFormat} onChange={(e) => setQrFormat(e.target.value as QRAppFormat)}>
-              <option value="QM2025">QM 2025 (mặc định)</option>
-              <option value="TNMAKER">TNMaker</option>
-              <option value="AZOTA">Azota</option>
-              <option value="UNT">UnT Dạy Học</option>
-            </select>
-          </div>
-          <div className="flex flex-col justify-end">
-            <Toggle checked={embedPhieu} onChange={setEmbedPhieu} label="Nhúng phiếu trả lời vào trang 1 của đề" />
-            <Toggle checked={embedQr} onChange={setEmbedQr} label="Nhúng QR đáp án vào ô mã đề" hint="QR chứa khóa của mã đề đó — phục vụ chấm bằng app." />
-          </div>
-        </div>
-      </section>
+      {/* Khung xem & sửa đề gốc (bản làm việc để trộn) */}
+      {source && (
+        <MixerSourceEditor source={source} warnings={sourceWarnings} onChange={handleSourceEdit} focusRequest={focusRequest} />
+      )}
 
       {/* 4. Kết quả */}
       {results.length > 0 && (
@@ -519,8 +647,10 @@ export const ExamMixerView: React.FC<ExamMixerViewProps> = ({ quizzes, onSaveVar
             <CheckCircle2 className="w-5 h-5 text-teal-700" /> 4. Bộ đề đã trộn — {results.length} mã đề
           </h2>
           <p className="text-xs text-slate-500 mb-4">
-            Tải từng mã hoặc tải trọn bộ ZIP (Thư mục đề + Thư mục đáp án như EduMix). Đáp án của từng mã đã bám theo
-            nội dung sau khi xáo — kiểm chứng bằng bản “Có đáp án”.
+            Tải từng mã hoặc tải trọn bộ ZIP (Thư mục đề + Thư mục đáp án — thư mục đáp án chỉ có một file
+            Đáp án.docx gồm bảng tổng hợp, đề gốc có đáp án và bộ QR 4 phần mềm). Đáp án của từng mã bám theo nội
+            dung sau khi xáo; xem khóa ngay dưới mỗi mã. Tờ đề không in mã QR — QR chỉ nằm trong file đáp án và
+            các file PNG tải riêng. Sau khi tải trọn bộ ZIP, trang sẽ tự xoá sạch dữ liệu (an toàn trên máy dùng chung).
           </p>
 
           <div className="space-y-3">
@@ -544,15 +674,6 @@ export const ExamMixerView: React.FC<ExamMixerViewProps> = ({ quizzes, onSaveVar
                   >
                     {busyAction === 'paper-' + item.result.code ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />}
                     Đề Word
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => downloadSolutions(item)}
-                    disabled={busyAction !== ''}
-                    className="flex items-center gap-1.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-lg px-3 py-2 disabled:opacity-50"
-                  >
-                    {busyAction === 'sol-' + item.result.code ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
-                    Bản có đáp án
                   </button>
                   <button
                     type="button"
@@ -592,7 +713,7 @@ export const ExamMixerView: React.FC<ExamMixerViewProps> = ({ quizzes, onSaveVar
               className="flex items-center gap-2 bg-blue-800 hover:bg-blue-900 text-white font-extrabold rounded-xl px-5 py-3 text-sm disabled:opacity-50"
             >
               {busyAction === 'bundle' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Package className="w-4 h-4" />}
-              Tải trọn bộ ZIP (đề + đáp án + QR + Excel + phiếu)
+              Tải trọn bộ ZIP (đề + đáp án + QR + phiếu) — tải xong tự xoá sạch trang
             </button>
             <button
               type="button"
@@ -601,15 +722,7 @@ export const ExamMixerView: React.FC<ExamMixerViewProps> = ({ quizzes, onSaveVar
               className="flex items-center gap-2 bg-white border-2 border-blue-800 text-blue-800 hover:bg-blue-50 font-bold rounded-xl px-4 py-3 text-sm disabled:opacity-50"
             >
               {busyAction === 'answerkey' ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardList className="w-4 h-4" />}
-              File đáp án chuẩn (.docx)
-            </button>
-            <button
-              type="button"
-              onClick={downloadExcel}
-              disabled={busyAction !== ''}
-              className="flex items-center gap-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold rounded-xl px-4 py-3 text-sm disabled:opacity-50"
-            >
-              Excel QM 2025
+              File đáp án (.docx)
             </button>
             <button
               type="button"
@@ -628,6 +741,14 @@ export const ExamMixerView: React.FC<ExamMixerViewProps> = ({ quizzes, onSaveVar
                 <Save className="w-4 h-4" /> Lưu các mã vào Kho đề
               </button>
             )}
+            <button
+              type="button"
+              onClick={manualWipe}
+              disabled={busyAction !== ''}
+              className="flex items-center gap-2 bg-white border border-rose-300 text-rose-700 hover:bg-rose-50 font-bold rounded-xl px-4 py-3 text-sm disabled:opacity-50"
+            >
+              <Trash2 className="w-4 h-4" /> Xóa sạch dữ liệu
+            </button>
           </div>
         </section>
       )}
