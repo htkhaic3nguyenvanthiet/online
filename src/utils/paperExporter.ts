@@ -1503,6 +1503,20 @@ export async function exportSourcePaperDocx(
   return exportPaperDocx(source.questions || [], codeLabel, meta, { ...opts, markAnswers: false });
 }
 
+/**
+ * Đề gốc CÓ ĐÁP ÁN — file riêng trong Thư mục đề (chỉ đạo của Thầy):
+ * toàn bộ đề gốc chưa trộn, đánh dấu đáp án đúng theo chuẩn đề tốt nghiệp
+ * (chỉ chữ cái đầu của phương án/ý đúng: đậm + gạch chân + đỏ RGB(220,20,60)).
+ */
+export async function exportSourceSolutionsDocx(
+  source: Quiz,
+  codeLabel: string,
+  meta: PaperMeta,
+  opts: VariantExportOptions = {}
+): Promise<Blob> {
+  return exportPaperDocx(source.questions || [], codeLabel, meta, { ...opts, markAnswers: true });
+}
+
 // ------------------------------------------------------------
 // File Đáp án.docx tổng hợp (kiểu exportMasterAnswerSheetDocx)
 // ------------------------------------------------------------
@@ -1559,23 +1573,16 @@ function answerHeadingXml(text: string): string {
 }
 
 /**
- * File Đáp án.docx — tài liệu đáp án DUY NHẤT của một đợt trộn, gồm đúng
- * 3 thành phần (chỉ đạo của Thầy):
+ * File Đáp án.docx trong Thư mục đáp án — gồm đúng 2 thành phần
+ * (cấu trúc thư mục cuối cùng của Thầy):
  * 1) Bảng tổng hợp các mã đề (Câu x Mã) cho cả 3 phần;
- * 2) Đề gốc CÓ ĐÁP ÁN — toàn bộ đề gốc chưa trộn, đánh dấu đáp án đúng
- *    theo chuẩn đề tốt nghiệp (chỉ chữ cái đầu của phương án/ý đúng:
- *    đậm + gạch chân + đỏ RGB(220,20,60));
- * 3) Bộ mã QR chấm thi tổng hợp của 4 phần mềm (QM 2025/TNMaker/Azota/UnT).
+ * 2) Bộ mã QR chấm thi tổng hợp của 4 phần mềm (QM 2025/TNMaker/Azota/UnT)
+ *    — mỗi payload QR chứa khóa của MỌI mã đề, quét 1 lần nạp đủ key.
+ * Đề gốc có đáp án KHÔNG nằm trong file này nữa: nó là file .docx riêng
+ * ở Thư mục đề (exportSourceSolutionsDocx).
  */
-export async function exportAnswerKeyDocx(
-  keys: MixerVariantKey[],
-  meta: PaperMeta,
-  source: Quiz,
-  opts: { onExportWarning?: (message: string) => void } = {}
-): Promise<Blob> {
+export async function exportAnswerKeyDocx(keys: MixerVariantKey[], meta: PaperMeta): Promise<Blob> {
   const registry = new DocxImageRegistry();
-  const sourceQuestions = source.questions || [];
-  await prepareQuestionSvgRasters(registry, sourceQuestions);
   const blocks: string[] = [headerTableXml(meta)];
   blocks.push(
     answerDocTitleXml(`BẢNG ĐÁP ÁN CHÍNH THỨC (${keys.length} MÃ ĐỀ: ${keys.map((k) => k.examCode).join(', ')})`)
@@ -1599,15 +1606,8 @@ export async function exportAnswerKeyDocx(
     blocks.push(matrixTableXml(keys, maxP3, (k, r) => k.answerKey.part3.find((x) => x.questionNumber === r + 1)?.answer || ''));
   }
 
-  // 2) Đề gốc có đáp án (ngắt trang trước cho gọn)
-  blocks.push('<w:p><w:r><w:br w:type="page"/></w:r></w:p>');
-  blocks.push(answerHeadingXml('ĐỀ GỐC CÓ ĐÁP ÁN'));
-  if (source.title) {
-    blocks.push(paragraphXml(textRunXml(source.title, { italic: true }), { spaceAfter: 80 }));
-  }
-  blocks.push(questionsBodyXml(sourceQuestions, registry, true));
-
-  // Bộ QR tổng hợp theo cụm tối đa 8 mã/QR như EduMix.
+  // 2) Bộ QR tổng hợp theo cụm tối đa 8 mã/QR như EduMix — mỗi QR mang
+  // khóa của mọi mã trong cụm, đủ 4 phần mềm chấm thi.
   const totalBatches = Math.ceil(keys.length / MAX_CODES_PER_SINGLE_QR);
   for (let b = 0; b < totalBatches; b++) {
     const batch = keys.slice(b * MAX_CODES_PER_SINGLE_QR, (b + 1) * MAX_CODES_PER_SINGLE_QR);
@@ -1647,17 +1647,7 @@ export async function exportAnswerKeyDocx(
   }
 
   const codesLabel = keys.length > 0 ? `${keys[0].examCode}–${keys[keys.length - 1].examCode}` : 'ĐÁP ÁN';
-  const blob = await packDocx(blocks.join('\n'), registry, codesLabel);
-  if (registry.svgRasterFailures > 0 && opts.onExportWarning) {
-    try {
-      opts.onExportWarning(
-        `Có ${registry.svgRasterFailures} công thức/hình dạng vector trong đề gốc không chuyển được sang ảnh PNG nét cao — trong file đáp án vừa xuất, các mục này được giữ dạng vector (chỉ Word 2019 trở lên mới hiển thị; Word cũ/WPS có thể không hiện).`
-      );
-    } catch {
-      // Cảnh báo lỗi không được làm hỏng file đã xuất
-    }
-  }
-  return blob;
+  return packDocx(blocks.join('\n'), registry, codesLabel);
 }
 
 // ------------------------------------------------------------
@@ -1676,9 +1666,16 @@ export interface BundleOptions extends VariantExportOptions {
 }
 
 /**
- * Đóng gói trọn bộ: Thư mục đề (đề gốc + đề từng mã + QR PNG + phiếu) và
- * Thư mục đáp án CHỈ chứa duy nhất Đáp án.docx (bảng tổng hợp + đề gốc có
- * đáp án + bộ QR 4 phần mềm) — theo chỉ đạo của Thầy, không thêm file đáp án nào khác.
+ * Đóng gói trọn bộ theo cấu trúc thư mục cuối cùng của Thầy:
+ * - Thư mục đề CHỈ có: "Đề gốc có đáp án.docx" (đề gốc đã đánh dấu đáp án)
+ *   + một file "Đề <mã>.docx" cho mỗi mã đã trộn. (Phiếu trả lời chỉ tồn tại
+ *   khi được nhúng vào trong từng tờ đề theo công tắc — không có file rời,
+ *   không có ảnh QR rời.)
+ * - Thư mục đáp án có: "Đáp án.docx" (bảng tổng hợp các mã đề + bộ QR tổng
+ *   hợp của 4 phần mềm chấm thi) + 4 file Excel đáp án theo đúng định dạng
+ *   nhập liệu của từng phần mềm (QM 2025 / TNMaker / Azota / UnT).
+ * Mọi thành phần đáp án (bảng, QR, Excel) đều dựng từ CÙNG một bảng khóa
+ * (mixerGrading) nên không bao giờ lệch nhau.
  */
 export async function exportMixerBundleZip(
   source: Quiz,
@@ -1699,46 +1696,28 @@ export async function exportMixerBundleZip(
       }
     : null;
 
-  const sourceBlob = await exportSourcePaperDocx(source, sourceCodeLabel, meta, { ...opts, phieu });
-  deFolder?.file('Đề gốc.docx', sourceBlob);
+  const sourceBlob = await exportSourceSolutionsDocx(source, sourceCodeLabel, meta, { ...opts, phieu });
+  deFolder?.file('Đề gốc có đáp án.docx', sourceBlob);
 
   for (const r of results) {
     const paper = await exportVariantPaperDocx(r, meta, { ...opts, phieu });
     deFolder?.file(`Đề ${cleanFileSegment(String(r.code))}.docx`, paper);
   }
 
-  // Thư mục đáp án: CHỈ một file Đáp án.docx duy nhất.
-  const answerDocx = await exportAnswerKeyDocx(keys, meta, source, {
-    onExportWarning: opts.onExportWarning,
-  });
+  // Thư mục đáp án: Đáp án.docx (bảng tổng hợp + bộ QR 4 phần mềm)…
+  const answerDocx = await exportAnswerKeyDocx(keys, meta);
   daFolder?.file('Đáp án.docx', answerDocx);
 
-  // QR từng mã (định dạng chính đã chọn) — tải riêng ở phía ĐỀ.
-  for (const key of keys) {
-    try {
-      const qrUrl = await makeVariantQrDataUrl(key, opts.qrFormat || 'QM2025');
-      deFolder?.file(`Mã QR — Đề ${cleanFileSegment(key.examCode)}.png`, dataUrlToUint8Array(qrUrl));
-    } catch {
-      // QR lỗi không chặn cả gói — đáp án đầy đủ vẫn nằm trong Đáp án.docx
-    }
-  }
-
-  // Bộ QR tổng hợp theo cụm 8 mã — cũng ở phía ĐỀ.
-  const totalBatches = Math.ceil(keys.length / MAX_CODES_PER_SINGLE_QR);
-  for (let b = 0; b < totalBatches; b++) {
-    const batch = keys.slice(b * MAX_CODES_PER_SINGLE_QR, (b + 1) * MAX_CODES_PER_SINGLE_QR);
-    const rangeLabel =
-      batch.length === 1 ? batch[0].examCode : `${batch[0].examCode}-${batch[batch.length - 1].examCode}`;
-    const suffix = totalBatches === 1 ? '' : ` (Cụm ${b + 1}: Đề ${rangeLabel})`;
-    const triple = await generateTripleGradingQrSet(batch);
-    if (triple.qm2025.qrDataUrl) deFolder?.file(`Mã QR QM 2025${suffix}.png`, dataUrlToUint8Array(triple.qm2025.qrDataUrl));
-    if (triple.tnmaker.qrDataUrl) deFolder?.file(`Mã QR TNMaker${suffix}.png`, dataUrlToUint8Array(triple.tnmaker.qrDataUrl));
-    if (triple.azota.qrDataUrl) deFolder?.file(`Mã QR Azota${suffix}.png`, dataUrlToUint8Array(triple.azota.qrDataUrl));
-    if (triple.unt.qrDataUrl) deFolder?.file(`Mã QR UnT Dạy Học${suffix}.png`, dataUrlToUint8Array(triple.unt.qrDataUrl));
-  }
-
-  if (opts.phieuDataUrl) {
-    deFolder?.file('Phiếu trả lời trắc nghiệm.jpg', dataUrlToUint8Array(opts.phieuDataUrl));
+  // …kèm 4 file Excel, mỗi phần mềm một file đúng định dạng của nó.
+  const excelSpecs: { format: 'QM2025' | 'TNMAKER' | 'AZOTA' | 'UNT'; fileName: string }[] = [
+    { format: 'QM2025', fileName: 'Excel QM 2025.xlsx' },
+    { format: 'TNMAKER', fileName: 'Excel TNMaker.xlsx' },
+    { format: 'AZOTA', fileName: 'Excel Azota.xlsx' },
+    { format: 'UNT', fileName: 'Excel UnT Dạy Học.xlsx' },
+  ];
+  for (const spec of excelSpecs) {
+    const xlsx = await exportGradingExcelXlsx(keys, spec.format);
+    daFolder?.file(spec.fileName, new Uint8Array(await xlsx.arrayBuffer()));
   }
 
   return zip.generateAsync({ type: 'blob' });

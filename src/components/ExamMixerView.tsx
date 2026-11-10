@@ -6,7 +6,6 @@ import {
   FileDown,
   Package,
   Save,
-  QrCode,
   ClipboardList,
   Printer,
   AlertTriangle,
@@ -31,12 +30,12 @@ import {
   MixerVariantKey,
   buildMixerAnswerKey,
   exportVariantPaperDocx,
+  exportSourceSolutionsDocx,
   exportAnswerKeyDocx,
   exportMixerBundleZip,
-  makeVariantQrDataUrl,
   triggerDownload,
 } from '../utils/paperExporter';
-import { QRAppFormat } from '../utils/mixerGrading';
+import { exportGradingExcelXlsx } from '../utils/mixerGrading';
 import { planMixerWipe, SavedVariantRef } from '../utils/mixerWipe';
 import { validateMixerSource } from '../utils/mixerValidation';
 import {
@@ -115,7 +114,6 @@ export const ExamMixerView: React.FC<ExamMixerViewProps> = ({ quizzes, onSaveVar
   const [meta, setMeta] = useState<PaperMeta>({ ...DEFAULT_PAPER_META });
   const [embedPhieu, setEmbedPhieu] = useState(true);
   const [phieuCode, setPhieuCode] = useState<PhieuQMCode>('AUTO');
-  const [qrFormat, setQrFormat] = useState<QRAppFormat>('QM2025');
 
   const [results, setResults] = useState<MixerResult[]>([]);
   const [busyAction, setBusyAction] = useState<string>('');
@@ -266,7 +264,6 @@ export const ExamMixerView: React.FC<ExamMixerViewProps> = ({ quizzes, onSaveVar
     withBusy('paper-' + item.result.code, async () => {
       const { phieuDataUrl } = await getPhieu();
       const blob = await exportVariantPaperDocx(item.result, meta, {
-        qrFormat,
         onExportWarning: pushExportWarning,
         phieu: phieuDataUrl
           ? { dataUrl: phieuDataUrl, widthEmu: 5943600, heightEmu: 2952750 }
@@ -275,21 +272,11 @@ export const ExamMixerView: React.FC<ExamMixerViewProps> = ({ quizzes, onSaveVar
       triggerDownload(blob, `De_${item.result.code}.docx`);
     });
 
-  const downloadQr = (item: MixerResult) =>
-    withBusy('qr-' + item.result.code, async () => {
-      const dataUrl = await makeVariantQrDataUrl(item.key, qrFormat);
-      const a = document.createElement('a');
-      a.href = dataUrl;
-      a.download = `Ma_QR_De_${item.result.code}.png`;
-      a.click();
-    });
-
   const downloadBundle = () =>
     withBusy('bundle', async () => {
       if (!source) return;
       const { phieuInfo, phieuDataUrl } = await getPhieu();
       const blob = await exportMixerBundleZip(source, String(extractBaseCode(source)), results.map((r) => r.result), meta, {
-        qrFormat,
         onExportWarning: pushExportWarning,
         phieuInfo,
         phieuDataUrl,
@@ -300,28 +287,30 @@ export const ExamMixerView: React.FC<ExamMixerViewProps> = ({ quizzes, onSaveVar
       performWipe('Đã tải trọn bộ và xóa sạch dữ liệu khỏi trang.');
     });
 
+  const downloadSourceSolutions = () =>
+    withBusy('srcsol', async () => {
+      if (!source) return;
+      const { phieuDataUrl } = await getPhieu();
+      const blob = await exportSourceSolutionsDocx(source, String(extractBaseCode(source)), meta, {
+        onExportWarning: pushExportWarning,
+        phieu: phieuDataUrl
+          ? { dataUrl: phieuDataUrl, widthEmu: 5943600, heightEmu: 2952750 }
+          : null,
+      });
+      triggerDownload(blob, 'De_goc_co_dap_an.docx');
+    });
+
   const downloadAnswerKey = () =>
     withBusy('answerkey', async () => {
       if (!source) return;
-      const blob = await exportAnswerKeyDocx(results.map((r) => r.key), meta, source, {
-        onExportWarning: pushExportWarning,
-      });
+      const blob = await exportAnswerKeyDocx(results.map((r) => r.key), meta);
       triggerDownload(blob, 'Dap_an.docx');
     });
 
-  const downloadPhieu = () =>
-    withBusy('phieu', async () => {
-      if (!source) return;
-      const info = resolvePhieuQMInfo(phieuCode, meta.subjectName || source.subject);
-      const dataUrl = await loadPhieuQMDataUrl(info);
-      if (!dataUrl) {
-        setError('Không tải được mẫu phiếu trả lời.');
-        return;
-      }
-      const a = document.createElement('a');
-      a.href = dataUrl;
-      a.download = 'Phieu_tra_loi_trac_nghiem.jpg';
-      a.click();
+  const downloadExcel = (format: 'QM2025' | 'TNMAKER' | 'AZOTA' | 'UNT', fileName: string) =>
+    withBusy('excel-' + format, async () => {
+      const blob = await exportGradingExcelXlsx(results.map((r) => r.key), format);
+      triggerDownload(blob, fileName);
     });
 
   const saveToLibrary = () => {
@@ -364,7 +353,6 @@ export const ExamMixerView: React.FC<ExamMixerViewProps> = ({ quizzes, onSaveVar
     setMeta({ ...DEFAULT_PAPER_META });
     setEmbedPhieu(true);
     setPhieuCode('AUTO');
-    setQrFormat('QM2025');
     setBusyAction('');
     setParsing(false);
     setFocusRequest(null);
@@ -474,15 +462,6 @@ export const ExamMixerView: React.FC<ExamMixerViewProps> = ({ quizzes, onSaveVar
               <option value="KHTN_DIA">Phiếu KHTN &amp; Địa (18-4-6)</option>
               <option value="NGOAI_NGU">Phiếu Ngoại ngữ (40 câu)</option>
               <option value="KHXH_CN_TIN">Phiếu KHXH, Công nghệ, Tin (24-6-0)</option>
-            </select>
-          </div>
-          <div>
-            <label className={labelCls}>Định dạng QR chấm thi</label>
-            <select className={inputCls} value={qrFormat} onChange={(e) => setQrFormat(e.target.value as QRAppFormat)}>
-              <option value="QM2025">QM 2025 (mặc định)</option>
-              <option value="TNMAKER">TNMaker</option>
-              <option value="AZOTA">Azota</option>
-              <option value="UNT">UnT Dạy Học</option>
             </select>
           </div>
           <div className="flex flex-col justify-end">
@@ -647,10 +626,11 @@ export const ExamMixerView: React.FC<ExamMixerViewProps> = ({ quizzes, onSaveVar
             <CheckCircle2 className="w-5 h-5 text-teal-700" /> 4. Bộ đề đã trộn — {results.length} mã đề
           </h2>
           <p className="text-xs text-slate-500 mb-4">
-            Tải từng mã hoặc tải trọn bộ ZIP (Thư mục đề + Thư mục đáp án — thư mục đáp án chỉ có một file
-            Đáp án.docx gồm bảng tổng hợp, đề gốc có đáp án và bộ QR 4 phần mềm). Đáp án của từng mã bám theo nội
-            dung sau khi xáo; xem khóa ngay dưới mỗi mã. Tờ đề không in mã QR — QR chỉ nằm trong file đáp án và
-            các file PNG tải riêng. Sau khi tải trọn bộ ZIP, trang sẽ tự xoá sạch dữ liệu (an toàn trên máy dùng chung).
+            Tải từng mã hoặc tải trọn bộ ZIP đúng hai thư mục: <b>Thư mục đề</b> chỉ có đề gốc có đáp án và các
+            mã đề đã trộn; <b>Thư mục đáp án</b> có Đáp án.docx (bảng tổng hợp các mã đề + bộ QR tổng hợp của 4
+            phần mềm, quét 1 lần nạp đủ khóa) kèm 4 file Excel đáp án theo từng phần mềm. Đáp án của từng mã bám
+            theo nội dung sau khi xáo; xem khóa ngay dưới mỗi mã. Tờ đề không in mã QR. Sau khi tải trọn bộ ZIP,
+            trang sẽ tự xoá sạch dữ liệu (an toàn trên máy dùng chung).
           </p>
 
           <div className="space-y-3">
@@ -674,14 +654,6 @@ export const ExamMixerView: React.FC<ExamMixerViewProps> = ({ quizzes, onSaveVar
                   >
                     {busyAction === 'paper-' + item.result.code ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />}
                     Đề Word
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => downloadQr(item)}
-                    disabled={busyAction !== ''}
-                    className="flex items-center gap-1.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-lg px-3 py-2 disabled:opacity-50"
-                  >
-                    <QrCode className="w-3.5 h-3.5" /> QR mã đề
                   </button>
                 </div>
                 <details className="mt-2 group">
@@ -713,7 +685,16 @@ export const ExamMixerView: React.FC<ExamMixerViewProps> = ({ quizzes, onSaveVar
               className="flex items-center gap-2 bg-blue-800 hover:bg-blue-900 text-white font-extrabold rounded-xl px-5 py-3 text-sm disabled:opacity-50"
             >
               {busyAction === 'bundle' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Package className="w-4 h-4" />}
-              Tải trọn bộ ZIP (đề + đáp án + QR + phiếu) — tải xong tự xoá sạch trang
+              Tải trọn bộ ZIP (Thư mục đề + Thư mục đáp án) — tải xong tự xoá sạch trang
+            </button>
+            <button
+              type="button"
+              onClick={downloadSourceSolutions}
+              disabled={busyAction !== ''}
+              className="flex items-center gap-2 bg-white border-2 border-teal-700 text-teal-800 hover:bg-teal-50 font-bold rounded-xl px-4 py-3 text-sm disabled:opacity-50"
+            >
+              {busyAction === 'srcsol' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+              Đề gốc có đáp án (.docx)
             </button>
             <button
               type="button"
@@ -724,14 +705,25 @@ export const ExamMixerView: React.FC<ExamMixerViewProps> = ({ quizzes, onSaveVar
               {busyAction === 'answerkey' ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardList className="w-4 h-4" />}
               File đáp án (.docx)
             </button>
-            <button
-              type="button"
-              onClick={downloadPhieu}
-              disabled={busyAction !== ''}
-              className="flex items-center gap-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold rounded-xl px-4 py-3 text-sm disabled:opacity-50"
-            >
-              Phiếu trả lời (.jpg)
-            </button>
+            {(
+              [
+                ['QM2025', 'Excel QM 2025.xlsx', 'Excel QM 2025'],
+                ['TNMAKER', 'Excel TNMaker.xlsx', 'Excel TNMaker'],
+                ['AZOTA', 'Excel Azota.xlsx', 'Excel Azota'],
+                ['UNT', 'Excel UnT Dạy Học.xlsx', 'Excel UnT'],
+              ] as const
+            ).map(([fmt, fname, label]) => (
+              <button
+                key={fmt}
+                type="button"
+                onClick={() => downloadExcel(fmt, fname)}
+                disabled={busyAction !== ''}
+                className="flex items-center gap-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold rounded-xl px-4 py-3 text-sm disabled:opacity-50"
+              >
+                {busyAction === 'excel-' + fmt ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
+                {label} (.xlsx)
+              </button>
+            ))}
             {onSaveVariants && (
               <button
                 type="button"
